@@ -1,0 +1,273 @@
+34 total AI endpoints, 32 searchSimilar calls (1 is the function definition, 1 is the generic RAG search API — so 30 endpoints actually use RAG). Here's the
+  complete guide:
+
+  ---
+  Complete Guide: All 34 AI Endpoints — Where to Click
+
+  LEGEND
+
+  - RAG = Uses vector search (searchSimilar) to pull relevant context from your embedded documents/KB/records
+  - No RAG = Pure SQL or pure LLM (no vector retrieval)
+
+  ---
+  A. AI Insights Page (/ai-insights) — 27 endpoints
+
+  Top Card Grid (6 cards — click "Generate" or "Analyze")
+
+  #: 1
+  Feature: Sales Forecast
+  Button: Click Generate button (or a sample chip like "Q1 Pipeline")
+  RAG?: RAG
+  What it does: Pulls pipeline + invoices from DB, retrieves similar sales knowledge via RAG, generates revenue forecast
+  ────────────────────────────────────────
+  #: 2
+  Feature: Lead Scoring
+  Button: Click Analyze button (or "Last 30 Days" chip)
+  RAG?: RAG
+  What it does: Scores each lead 1-100, recommends next actions, uses RAG for lead conversion patterns
+  ────────────────────────────────────────
+  #: 3
+  Feature: Customer Sentiment
+  Button: Click Analyze button
+  RAG?: RAG
+  What it does: Analyzes ticket sentiment 1-10, finds churn risks, RAG pulls satisfaction knowledge
+  ────────────────────────────────────────
+  #: 4
+  Feature: Business Insights
+  Button: Click Generate button
+  RAG?: RAG
+  What it does: Executive briefing across pipeline, tickets, leads, invoices, team data + RAG context
+  ────────────────────────────────────────
+  #: 5
+  Feature: Performance Analysis
+  Button: Click Analyze button
+  RAG?: RAG
+  What it does: Goals + projects performance scoring, budget vs actual, RAG adds performance benchmarks
+  ────────────────────────────────────────
+  #: 6
+  Feature: Competitor Analysis
+  Button: Click Analyze button
+  RAG?: RAG
+  What it does: Market positioning, battle cards, win strategies from competitor data + RAG
+
+  Content Generator (form section)
+
+  #: 7
+  Feature: Content Generator
+  Button: Fill form (Type, Tone, Topic, Audience) → click Generate Content
+  RAG?: RAG
+  How to use: Pick a quick template like "Q4 Results Email" or fill custom fields. RAG pulls relevant company context
+
+  SAP Build Code (form section)
+
+  #: 8
+  Feature: Code Generator
+  Button: Pick Language + Context + describe → click Generate Code
+  RAG?: No RAG
+  How to use: Generates ABAP, CDS, Fiori, OData, CAP code. Use quick templates like "ABAP Class" or type custom
+
+  RAG Knowledge Base
+
+  #: 9
+  Feature: Embed KB Articles
+  Button: Click Embed KB Articles
+  RAG?: N/A
+  How to use: Syncs your knowledge_base table into vector embeddings — run this first to power all RAG features
+  ────────────────────────────────────────
+  #: 10
+  Feature: RAG Search
+  Button: Type query → press Enter or click search icon
+  RAG?: RAG
+  How to use: Direct semantic search across all embedded data — shows raw chunks with similarity scores
+
+  Document Store
+
+  #: 11
+  Feature: Upload & Embed
+  Button: Fill title/category, pick PDF/TXT → click Upload & Embed
+  RAG?: N/A
+  How to use: Uploads document, extracts text, chunks it, embeds into vector store
+
+  Customer 360
+
+  #: 12
+  Feature: Customer 360
+  Button: Type account name (e.g., "BASF") → press Enter or click Generate 360
+  RAG?: RAG
+  How to use: Full account view: contacts, opps, tickets, orders, invoices + RAG context. Shows stat badges
+
+  Recommendations
+
+  #: 13
+  Feature: AI Recommendations
+  Button: Type account name → press Enter or click Get Recommendations
+  RAG?: RAG
+  How to use: Cross-sell/upsell cards with confidence levels, estimated values, next steps
+
+  Workflow Suggestions
+
+  #: 14
+  Feature: Workflow Suggestions
+  Button: Click Analyze & Suggest
+  RAG?: RAG
+  How to use: Scans pending approvals, overdue tickets, stale opps, expiring contracts. Shows count badges + prioritized action plan
+
+  Anomaly Explanations
+
+  ┌─────┬───────────────────┬─────────────────────────────┬──────┬────────────────────────────────────────────────────────────────────────────────────────┐
+  │  #  │      Feature      │           Button            │ RAG? │                                       How to use                                       │
+  ├─────┼───────────────────┼─────────────────────────────┼──────┼────────────────────────────────────────────────────────────────────────────────────────┤
+  │ 15  │ Explain Anomalies │ Click Explain All Anomalies │ RAG  │ AI root cause analysis for all detected anomalies (overdue invoices, stale opps, etc.) │
+  └─────┴───────────────────┴─────────────────────────────┴──────┴────────────────────────────────────────────────────────────────────────────────────────┘
+
+  ---
+  15 NEW Advanced RAG Features (scroll down on AI Insights page)
+
+  #: 16
+  Feature: Conversational RAG
+  Button / Trigger: Type question → press Enter or click green send button
+  RAG?: RAG
+  How to use: Chat grounded in your documents. Shows Sources Used panel below with chunk excerpts + similarity %
+  ────────────────────────────────────────
+  #: 17
+  Feature: AI Approval Routing
+  Button / Trigger: Fill Module/Amount/Department/Type → click Suggest Approval Chain
+  RAG?: RAG
+  How to use: Returns numbered approval chain with approver names, roles, reasons. Shows estimated time
+  ────────────────────────────────────────
+  #: 18
+  Feature: Predictive Inventory
+  Button / Trigger: Click Generate Inventory Forecast
+  RAG?: RAG
+  How to use: Analyzes orders, deliveries, inventory. Returns demand forecast, reorder recommendations, seasonal patterns
+  ────────────────────────────────────────
+  #: 19
+  Feature: Contract Clause Analysis
+  Button / Trigger: Enter Contract ID or paste text → click Analyze Contract
+  RAG?: RAG
+  How to use: Extracts key terms, financial terms, risk assessment, compliance flags, renewal conditions
+  ────────────────────────────────────────
+  #: 20
+  Feature: Intelligent Matching
+  Button / Trigger: Select doc type (PO/Invoice/GR) + enter ID → click Find Matches
+  RAG?: RAG
+  How to use: Uses embedding similarity to find matching POs ↔ Invoices ↔ Goods Receipts for 3-way matching
+  ────────────────────────────────────────
+  #: 21
+  Feature: Natural Language Reporting
+  Button / Trigger: Type in English (e.g., "top 10 accounts by revenue") → press Enter or click Run Report
+  RAG?: RAG
+  How to use: Converts to SQL, executes safely, shows data table below + AI analysis of results
+  ────────────────────────────────────────
+  #: 22
+  Feature: AI Data Quality
+  Button / Trigger: Click Run Data Quality Scan
+  RAG?: RAG
+  How to use: Scans all modules for missing fields, stale records, duplicates. Shows colored severity badges + AI recommendations
+  ────────────────────────────────────────
+  #: 23
+  Feature: Vendor Risk Scoring
+  Button / Trigger: Click Assess Vendor Risk
+  RAG?: RAG
+  How to use: Returns risk score cards per vendor (0-100) with color-coded risk levels, factors, recommendations
+  ────────────────────────────────────────
+  #: 24
+  Feature: Multi-doc RAG Q&A
+  Button / Trigger: Type question → press Enter or click Ask Documents
+  RAG?: RAG
+  How to use: Searches only across uploaded PDFs/documents. Shows answer + Source Documents panel
+  ────────────────────────────────────────
+  #: 25
+  Feature: AI Change Impact
+  Button / Trigger: Fill Change Type + Module + Description → click Analyze Impact
+  RAG?: RAG
+  How to use: Predicts downstream effects before org changes. Returns impact summary, rollback plan, testing checklist
+  ────────────────────────────────────────
+  #: 26
+  Feature: Email-to-Record
+  Button / Trigger: Paste email text → click Parse & Extract
+  RAG?: RAG
+  How to use: Extracts structured fields (title, priority, contact, account, etc.). Shows suggested module + confidence badge + extracted fields grid
+  ────────────────────────────────────────
+  #: 27
+  Feature: AI Pricing Optimizer
+  Button / Trigger: Optionally enter product/account → click Optimize Pricing
+  RAG?: RAG
+  How to use: Win rate analysis, optimal price points, discount strategy from historical deals
+  ────────────────────────────────────────
+  #: 28
+  Feature: Batch Demand Forecast
+  Button / Trigger: Click Forecast Batch Demand
+  RAG?: RAG
+  How to use: FIFO/FEFO strategy, expiring batches, reorder points, waste reduction from batch data
+  ────────────────────────────────────────
+  #: 29
+  Feature: Multi-language Support
+  Button / Trigger: Paste text + select target language → click Translate
+  RAG?: No RAG
+  How to use: Translates any AI output (15 languages: German, French, Spanish, Japanese, Chinese, etc.)
+  ────────────────────────────────────────
+  #: 30
+  Feature: RAG with Citations
+  Button / Trigger: Type question → press Enter or click Ask with Citations
+  RAG?: RAG
+  How to use: Every claim cites [Source N]. Shows expandable Source Citations panel with full chunk text + match %
+
+  AI Copilot Chat (bottom of page)
+
+  #: 31
+  Feature: AI Copilot
+  Button: Type message → press Enter or click send button. Use suggestion chips for quick starts
+  RAG?: RAG
+  How to use: Multi-turn chat with full conversation history. RAG retrieves relevant context per message
+
+  ---
+  B. Module Pages (Contacts, Leads, Tickets, etc.) — 4 endpoints
+
+  ┌─────┬─────────────────┬──────────────────────────────┬────────────────────────────────────────────────────────┬──────┐
+  │  #  │     Feature     │            Where             │                         Button                         │ RAG? │
+  ├─────┼─────────────────┼──────────────────────────────┼────────────────────────────────────────────────────────┼──────┤
+  │ 32  │ Generate Record │ Any module → Create form     │ Click AI fill icon → type natural language description │ RAG  │
+  ├─────┼─────────────────┼──────────────────────────────┼────────────────────────────────────────────────────────┼──────┤
+  │ 33  │ Record Summary  │ Any module → select a record │ Click AI Summary button in detail panel                │ RAG  │
+  ├─────┼─────────────────┼──────────────────────────────┼────────────────────────────────────────────────────────┼──────┤
+  │ 34  │ Draft Email     │ Any module → select a record │ Click Draft Email button in detail panel               │ RAG  │
+  └─────┴─────────────────┴──────────────────────────────┴────────────────────────────────────────────────────────┴──────┘
+
+  (Plus check-duplicates triggers automatically on field blur, and ticket-classify shows on ticket detail — both No RAG / already existing)
+
+  ---
+  C. Other Pages
+
+  ┌───────────────────┬───────────────────────────┬────────────────────────────────────────────────┐
+  │      Feature      │           Where           │                    Trigger                     │
+  ├───────────────────┼───────────────────────────┼────────────────────────────────────────────────┤
+  │ Smart Search      │ Top search bar (any page) │ Type natural language query → press Enter      │
+  ├───────────────────┼───────────────────────────┼────────────────────────────────────────────────┤
+  │ Explain Anomalies │ Dashboard page            │ Click "Explain with AI" next to anomaly alerts │
+  └───────────────────┴───────────────────────────┴────────────────────────────────────────────────┘
+
+  ---
+  Quick Start — First Time Setup
+
+  1. Go to AI Insights page
+  2. Click Embed KB Articles button (green section) — this syncs your knowledge base into vector embeddings
+  3. Upload any PDFs/docs in the Document Store section
+  4. Now all 30 RAG-powered endpoints will return richer, grounded answers
+
+  Final Count
+
+  ┌─────────────────────────────────────┬──────────────────────────────────────────────────────────────┐
+  │              Category               │                            Count                             │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Total AI endpoints                  │ 34                                                           │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Endpoints using RAG (searchSimilar) │ 30                                                           │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Endpoints without RAG               │ 4 (code-generate, check-duplicates, smart-search, translate) │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Endpoints on AI Insights page       │ 31                                                           │
+  ├─────────────────────────────────────┼──────────────────────────────────────────────────────────────┤
+  │ Endpoints on Module pages           │ 3                                                            │
+  └─────────────────────────────────────┴──────────────────────────────────────────────────────────────┘
+

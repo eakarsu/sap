@@ -1,0 +1,94 @@
+Here's the full picture of your Gen AI / RAG solutions:
+
+  Existing AI Features (Already Built)
+
+  ┌─────┬────────────────────────┬────────────────────────┬───────────────────────────────┐
+  │  #  │        Feature         │          Type          │           Endpoint            │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 1   │ Sales Forecast         │ LLM prompt             │ /api/ai/sales-forecast        │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 2   │ Lead Scoring           │ LLM prompt             │ /api/ai/lead-scoring          │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 3   │ Customer Sentiment     │ LLM prompt             │ /api/ai/sentiment             │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 4   │ Business Insights      │ LLM prompt             │ /api/ai/insights              │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 5   │ Performance Analysis   │ LLM prompt             │ /api/ai/performance           │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 6   │ Competitor Analysis    │ LLM prompt             │ /api/ai/competitor-analysis   │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 7   │ Content Generator      │ LLM prompt             │ /api/ai/content-generate      │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 8   │ SAP Build Code (Joule) │ LLM code gen           │ /api/ai/code-generate         │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 9   │ AI Copilot Chat        │ LLM chat               │ /api/ai/copilot               │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 10  │ RAG Knowledge Base     │ pgvector + embeddings  │ /api/rag/embed-knowledge-base │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 11  │ RAG Semantic Search    │ vector similarity      │ /api/rag/search               │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 12  │ Document Store & RAG   │ PDF/TXT upload + embed │ /api/rag/upload-document      │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 13  │ Customer 360 AI        │ DB aggregation + LLM   │ /api/ai/customer-360          │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 14  │ AI Recommendations     │ Cross-sell/upsell LLM  │ /api/ai/recommendations       │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 15  │ Workflow Suggestions   │ DB scan + LLM          │ /api/ai/workflow-suggestions  │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 16  │ Anomaly Explanations   │ LLM root cause         │ /api/ai/explain-anomalies     │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 17  │ Ticket Classification  │ LLM classify           │ /api/ai/ticket-classify       │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 18  │ AI Record Generation   │ LLM auto-fill          │ /api/ai/generate-record       │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 19  │ Duplicate Detection    │ LLM analysis           │ /api/ai/check-duplicates      │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 20  │ Record Summary         │ LLM summarize          │ /api/ai/record-summary        │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 21  │ Draft Email            │ LLM compose            │ /api/ai/draft-email           │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 22  │ Smart Search           │ LLM-enhanced search    │ /api/ai/smart-search          │
+  ├─────┼────────────────────────┼────────────────────────┼───────────────────────────────┤
+  │ 23  │ Auto Embedding Sync    │ Background indexer     │ syncEmbeddings() on startup   │
+  └─────┴────────────────────────┴────────────────────────┴───────────────────────────────┘
+
+  RAG Stack: pgvector extension, Xenova/all-MiniLM-L6-v2 local embeddings (384-dim), cosine similarity, auto-sync on server start across documents + KB articles +
+  all module records.
+
+  ---
+  Potential Future AI/RAG Features
+
+  ┌─────┬────────────────────────────┬─────────────────────────────────────────────────────────────────────────────────────┐
+  │  #  │          Feature           │                                     Description                                     │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 1   │ Conversational RAG         │ Copilot answers grounded in your actual documents/KB instead of pure LLM generation │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 2   │ AI Approval Routing        │ Auto-suggest approval chains based on historical patterns and document type         │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 3   │ Predictive Inventory       │ Forecast stock needs from order/delivery history + seasonality                      │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 4   │ Contract Clause Analysis   │ RAG over uploaded contracts, extract key terms/risks                                │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 5   │ Intelligent Matching       │ Auto-match POs to invoices to GR using embeddings similarity                        │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 6   │ Natural Language Reporting │ "Show me revenue by region last quarter" → auto-generate SQL + chart                │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 7   │ AI Data Quality            │ Detect missing fields, inconsistencies, stale records across modules                │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 8   │ Vendor Risk Scoring        │ Analyze vendor performance data + external signals for risk assessment              │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 9   │ Multi-doc RAG Q&A          │ Ask questions across multiple uploaded PDFs simultaneously                          │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 10  │ AI Change Impact Analysis  │ Before org reassignment or config change, predict downstream effects                │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 11  │ Email-to-Record            │ Parse incoming emails → auto-create tickets/orders/activities                       │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 12  │ AI Pricing Optimizer       │ Suggest optimal pricing conditions based on historical win rates                    │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 13  │ Batch Demand Forecasting   │ Predict batch consumption to optimize FIFO/FEFO strategies                          │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 14  │ Multi-language Support     │ Translate AI outputs to user's preferred language                                   │
+  ├─────┼────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────┤
+  │ 15  │ RAG with Citations         │ Show exact source document/chunk that backs each AI answer                          │
+  └─────┴────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────┘
+

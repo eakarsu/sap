@@ -1,0 +1,52 @@
+┌─────┬──────────────────────────┬──────────────────┬───────┬─────────────────────────────────────────────────────────────────┐
+  │  #  │         Feature          │  Source Filter   │ Top N │                         Problem Solved                          │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 7   │ Sales Forecasting        │ All              │ 4     │ Revenue predictions enhanced with pipeline + historical context │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 8   │ Lead Scoring             │ leads only       │ 4     │ Score leads using past lead conversion patterns                 │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 9   │ Sentiment Analysis       │ All              │ 4     │ Detect customer satisfaction from ticket/interaction context    │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 10  │ Content Generator        │ All              │ 3     │ Generate emails/reports with company-specific knowledge         │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 11  │ Executive Summary        │ All              │ 4     │ Strategic insights grounded in actual business data             │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 12  │ Copilot Chat             │ All              │ 3     │ General assistant with RAG context for each question            │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 13  │ KPI Coach                │ All              │ 3     │ Project/performance advice grounded in real metrics             │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 14  │ Competitor Intel         │ competitors only │ 4     │ Battle cards with actual competitive data                       │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 15  │ Ticket Classify          │ All              │ 5     │ Classify tickets using historical ticket patterns               │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 16  │ Customer 360             │ All              │ 5     │ Full customer view enriched with related documents/KB           │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 17  │ Recommendations          │ products only    │ 4     │ Product upsell/cross-sell based on product knowledge            │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 18  │ Workflow Suggestions     │ All              │ 4     │ Automation ideas using SLA/process best practices               │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 19  │ Anomaly Explanations     │ All              │ 5     │ Explain data anomalies with historical context                  │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 20  │ Approval Routing         │ All              │ 4     │ Route approvals using workflow policy knowledge                 │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 21  │ Predictive Inventory     │ All              │ 4     │ Stock forecasts enriched with demand pattern context            │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 22  │ Contract Clause Analysis │ All              │ 5     │ Analyze contracts with legal/policy context from KB             │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 23  │ Intelligent Matching     │ All              │ 10    │ Find duplicate/related documents across all sources             │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 24  │ NL Reporting             │ All              │ 3     │ Generate SQL with schema context from embeddings                │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 25  │ Data Quality             │ All              │ 3     │ Detect bad data using best-practice patterns from KB            │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 26  │ Vendor Risk              │ vendors only     │ 4     │ Score vendor risk with vendor-specific context                  │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 27  │ Change Impact            │ All              │ 4     │ Predict downstream effects using change management KB           │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 28  │ Email-to-Record          │ module-specific  │ 3     │ Parse emails into CRM records with module context               │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 29  │ Pricing Optimizer        │ products only    │ 4     │ Price recommendations using product/deal history                │
+  ├─────┼──────────────────────────┼──────────────────┼───────┼─────────────────────────────────────────────────────────────────┤
+  │ 30  │ Batch Demand Forecast    │ All              │ 4     │ Batch/inventory optimization with consumption patterns          │
+  └─────┴──────────────────────────┴──────────────────┴───────┴─────────────────────────────────────────────────────────────────┘
+
