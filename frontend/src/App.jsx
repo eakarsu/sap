@@ -1,3 +1,12 @@
+// === Batch 11 Gaps & Frontend Mounts ===
+import GapAiInsightsEnginePage from './pages/gap/GapAiInsightsEnginePage'
+import GapTransactionAnomalyPage from './pages/gap/GapTransactionAnomalyPage'
+import GapWorkflowBottleneckPage from './pages/gap/GapWorkflowBottleneckPage'
+import GapMasterDataDedupePage from './pages/gap/GapMasterDataDedupePage'
+import GapOdataConnectorPage from './pages/gap/GapOdataConnectorPage'
+import GapSsoSamlPage from './pages/gap/GapSsoSamlPage'
+import GapWebsocketPushPage from './pages/gap/GapWebsocketPushPage'
+import GapMobileApprovalsPage from './pages/gap/GapMobileApprovalsPage'
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { modules, sidebarGroups, moduleList } from './modules';
@@ -6,6 +15,7 @@ import Dashboard from './pages/Dashboard';
 import ModulePage from './pages/ModulePage';
 import DetailPage from './pages/DetailPage';
 import AIInsights from './pages/AIInsights';
+import AIStudio from './pages/AIStudio';
 import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import Calendar from './pages/Calendar';
@@ -259,6 +269,10 @@ function Layout({ user, onLogout, children }) {
               <FiCpu size={18} />
               <span>AI Copilot</span>
             </Link>
+            <Link to="/ai-studio" className={`sidebar-item ai-sidebar-item ${isActive('/ai-studio') ? 'active' : ''}`}>
+              <FiCpu size={18} />
+              <span>AI Studio</span>
+            </Link>
             <div className="sidebar-divider"></div>
             <Link to="/settings" className={`sidebar-item ${isActive('/settings') ? 'active' : ''}`}>
               <FiSettings size={18} />
@@ -314,6 +328,7 @@ export default function App() {
       <Routes>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/ai-insights" element={<AIInsights />} />
+        <Route path="/ai-studio" element={<AIStudio />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/calendar" element={<Calendar />} />
@@ -322,6 +337,15 @@ export default function App() {
         <Route path="/:moduleKey/:id" element={<DetailPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+            {/* === Batch 11 Gaps & Frontend Mounts === */}
+        <Route path="/gap/ai-insights-engine" element={<GapAiInsightsEnginePage />} />
+        <Route path="/gap/transaction-anomaly" element={<GapTransactionAnomalyPage />} />
+        <Route path="/gap/workflow-bottleneck" element={<GapWorkflowBottleneckPage />} />
+        <Route path="/gap/master-data-dedupe" element={<GapMasterDataDedupePage />} />
+        <Route path="/gap/odata-connector" element={<GapOdataConnectorPage />} />
+        <Route path="/gap/sso-saml" element={<GapSsoSamlPage />} />
+        <Route path="/gap/websocket-push" element={<GapWebsocketPushPage />} />
+        <Route path="/gap/mobile-approvals" element={<GapMobileApprovalsPage />} />
       </Routes>
     </Layout>
   );

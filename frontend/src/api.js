@@ -263,3 +263,55 @@ export const translateAI = (text, targetLanguage) =>
 
 export const ragWithCitations = (question) =>
   request(`${API}/ai/rag-citations`, { method: 'POST', body: JSON.stringify({ question }) });
+
+// ----- Newly added AI features -----
+export const aiResults = (params = {}) => {
+  const qs = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => v !== undefined && v !== '' && qs.set(k, String(v)));
+  return request(`${API}/ai/results?${qs.toString()}`);
+};
+
+export const hybridSearch = (query, sourceType, limit = 10, alpha = 0.6) =>
+  request(`${API}/rag/hybrid-search`, {
+    method: 'POST',
+    body: JSON.stringify({ query, sourceType, limit, alpha }),
+  });
+
+export const recommendApprover = (body) =>
+  request(`${API}/ai/recommend-approver`, { method: 'POST', body: JSON.stringify(body) });
+
+export const anomalyToTicket = (anomalies) =>
+  request(`${API}/ai/anomaly-to-ticket`, { method: 'POST', body: JSON.stringify({ anomalies }) });
+
+export const voiceAction = (transcript, currentModule) =>
+  request(`${API}/ai/voice-action`, { method: 'POST', body: JSON.stringify({ transcript, currentModule }) });
+
+export const listTenantKeys = () => request(`${API}/admin/tenant-keys`);
+export const setTenantKey = (tenantId, openrouterApiKey, model) =>
+  request(`${API}/admin/tenant-keys`, {
+    method: 'POST',
+    body: JSON.stringify({ tenantId, openrouterApiKey, model }),
+  });
+
+// Apply pass 5 — additive backlog client helpers.
+// All endpoints return 503 + { missing: <ENV> } when their env var is unset.
+export const sapOdataProxy = (body) =>
+  request(`${API}/sap/odata-proxy`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapBapiCall = (body) =>
+  request(`${API}/sap/bapi-call`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapIdocProcess = (body) =>
+  request(`${API}/sap/idoc-process`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapApprovalWorkflow = (body) =>
+  request(`${API}/sap/approval-workflow`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapCrossCompanyConsolidation = (body) =>
+  request(`${API}/sap/cross-company-consolidation`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapPricingConditions = (body) =>
+  request(`${API}/sap/pricing-conditions`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapDocumentFlow = (body) =>
+  request(`${API}/sap/document-flow`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapWhereUsed = (body) =>
+  request(`${API}/sap/where-used`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const sapEntityMapping = (body) =>
+  request(`${API}/sap/entity-mapping`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const aiStudioPromptDesign = (body) =>
+  request(`${API}/ai/studio-prompt-design`, { method: 'POST', body: JSON.stringify(body || {}) });
