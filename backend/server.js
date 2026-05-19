@@ -6080,6 +6080,7 @@ Return ONLY JSON: { "systemPrompt": "...", "userTemplate": "...", "rationale": "
 
 app.use('/api/sap-extras', require('./routes/aiExtras')); // Custom Feature Suggestions (batch 11)
 app.use('/api', require('./routes/gap-features')); // === Batch 11 Gaps & Frontend Mounts ===
+app.use('/api/custom-views', require('./routes/customViews')); // 4 SAP custom views (system status / tx volume / IDoc / batch jobs)
 
 app.listen(PORT, () => {
   console.log(`SAP CRM API Server running on port ${PORT}`);

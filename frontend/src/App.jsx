@@ -7,6 +7,7 @@ import GapOdataConnectorPage from './pages/gap/GapOdataConnectorPage'
 import GapSsoSamlPage from './pages/gap/GapSsoSamlPage'
 import GapWebsocketPushPage from './pages/gap/GapWebsocketPushPage'
 import GapMobileApprovalsPage from './pages/gap/GapMobileApprovalsPage'
+import CustomViewsPage from './pages/CustomViewsPage';
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { modules, sidebarGroups, moduleList } from './modules';
@@ -265,6 +266,10 @@ function Layout({ user, onLogout, children }) {
               <FiCheckSquare size={18} />
               <span>Approvals</span>
             </Link>
+            <Link to="/custom-views" className={`sidebar-item ${isActive('/custom-views') ? 'active' : ''}`}>
+              <FiGrid size={18} />
+              <span>SAP Views</span>
+            </Link>
             <Link to="/ai-insights" className={`sidebar-item ai-sidebar-item ${isActive('/ai-insights') ? 'active' : ''}`}>
               <FiCpu size={18} />
               <span>AI Copilot</span>
@@ -333,6 +338,7 @@ export default function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route path="/custom-views" element={<CustomViewsPage />} />
         <Route path="/:moduleKey" element={<ModulePage />} />
         <Route path="/:moduleKey/:id" element={<DetailPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
