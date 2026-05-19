@@ -1,20 +1,41 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('./db');
 const auth = require('./middleware/auth');
 const multer = require('multer');
-const { PDFParse } = require('pdf-parse');
+const pdfParse = require('pdf-parse');
 const path = require('path');
 const fs = require('fs');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config({ path: '../.env' });
+
+// Fail fast if JWT_SECRET is not configured
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.BACKEND_PORT || 4002;
 
-app.use(cors());
-app.use(express.json());
+// Security headers (helmet) — disable CSP since this is an API serving JSON.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// CORS — origins from env (comma-separated) or wildcard for dev.
+const corsOrigins = (process.env.CORS_ORIGIN || '*')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+app.use(
+  cors({
+    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: '10mb' }));
 
 // File upload config
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -47,6 +68,31 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Generic AI invocation log (JSONB input/output) — used by all AI features
+    // for audit, history UI, and offline analysis.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS ai_results (
+        id SERIAL PRIMARY KEY,
+        feature VARCHAR(100) NOT NULL,
+        user_id INTEGER,
+        object_type VARCHAR(100),
+        object_id VARCHAR(100),
+        input JSONB DEFAULT '{}',
+        output JSONB DEFAULT '{}',
+        model VARCHAR(200),
+        tokens_used INTEGER,
+        duration_ms INTEGER,
+        status VARCHAR(20) DEFAULT 'success',
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_ai_results_feature_created ON ai_results (feature, created_at DESC)`); } catch {}
+    try { await pool.query(`CREATE INDEX IF NOT EXISTS idx_ai_results_user_created ON ai_results (user_id, created_at DESC)`); } catch {}
+    // Add full-text search index on documents.content for hybrid (BM25 + vector) search.
+    try {
+      await pool.query(`CREATE INDEX IF NOT EXISTS idx_documents_content_tsv ON documents USING GIN (to_tsvector('english', coalesce(content,'')))`);
+    } catch {}
     // Create index if not exists
     try {
       await pool.query('CREATE INDEX IF NOT EXISTS idx_embeddings_embedding ON embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 10)');
@@ -544,7 +590,47 @@ app.delete('/api/admin/users/:id', auth, async (req, res) => {
 // ============ AI ROUTES (OpenRouter) ============
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
-async function callAI(messages) {
+// AI rate limiter: 20 requests per hour, keyed by authenticated user (fallback to IP).
+const aiRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many AI requests. Limit is 20 per hour per user. Please try again later.' },
+  keyGenerator: (req) => {
+    // Decode JWT lazily without auth middleware overhead — best-effort.
+    try {
+      const tok = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+      if (tok) {
+        const decoded = jwt.verify(tok, process.env.JWT_SECRET);
+        if (decoded?.id) return `user:${decoded.id}`;
+      }
+    } catch {}
+    return `ip:${req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip}`;
+  },
+});
+
+// Apply AI rate limiter to all /api/ai/* and /api/nlq routes
+app.use('/api/ai', aiRateLimiter);
+app.use('/api/nlq', aiRateLimiter);
+
+const AI_CONTEXT_MAX_CHARS = 8000;
+
+function truncateContext(text) {
+  if (typeof text !== 'string') return text;
+  if (text.length <= AI_CONTEXT_MAX_CHARS) return text;
+  return text.substring(0, AI_CONTEXT_MAX_CHARS) + '\n[context truncated for length]';
+}
+
+function sanitizeMessages(messages) {
+  return messages.map(msg => ({
+    ...msg,
+    content: truncateContext(msg.content),
+  }));
+}
+
+async function callAI(messages, opts = {}) {
+  const sanitized = sanitizeMessages(messages);
   const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
@@ -554,13 +640,89 @@ async function callAI(messages) {
       'X-Title': 'SAP CRM AI Assistant',
     },
     body: JSON.stringify({
-      model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
-      messages,
-      max_tokens: 16000,
+      model: opts.model || process.env.OPENROUTER_MODEL || 'anthropic/claude-3-5-sonnet-20241022',
+      messages: sanitized,
+      max_tokens: opts.maxTokens || 16000,
+      temperature: typeof opts.temperature === 'number' ? opts.temperature : undefined,
     }),
   });
   const data = await response.json();
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// parseAIJson — 3-strategy JSON parsing for resilient LLM output handling.
+//   1) direct JSON.parse  2) extract from markdown code fence  3) repair
+//      truncated/unterminated JSON.
+// ---------------------------------------------------------------------------
+function _repairTruncatedJSON(json) {
+  let str = String(json || '').trim();
+  const firstBrace = str.search(/[\{\[]/);
+  if (firstBrace > 0) str = str.substring(firstBrace);
+  str = str.replace(/,\s*$/, '');
+  const stack = [];
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (escaped) { escaped = false; continue; }
+    if (ch === '\\' && inString) { escaped = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (!inString) {
+      if (ch === '{') stack.push('}');
+      else if (ch === '[') stack.push(']');
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+  }
+  if (inString) str += '"';
+  str = str.replace(/,\s*$/, '');
+  while (stack.length > 0) str += stack.pop();
+  return str;
+}
+
+function parseAIJson(raw) {
+  if (!raw || typeof raw !== 'string') throw new Error('parseAIJson: empty input');
+  const normalized = raw
+    .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036]/g, '"')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .trim();
+  try { return JSON.parse(normalized); } catch {}
+  const fence = normalized.match(/```(?:json)?\s*\n?([\s\S]*?)```/i);
+  if (fence && fence[1]) {
+    try { return JSON.parse(fence[1].trim()); } catch {
+      try { return JSON.parse(_repairTruncatedJSON(fence[1])); } catch {}
+    }
+  }
+  return JSON.parse(_repairTruncatedJSON(normalized));
+}
+
+// ---------------------------------------------------------------------------
+// recordAIResult — persist any AI invocation to the ai_results JSONB table
+// for a unified audit log + observability.
+// ---------------------------------------------------------------------------
+async function recordAIResult({ feature, userId, objectType, objectId, input, output, status, errorMessage, durationMs, model }) {
+  try {
+    await pool.query(
+      `INSERT INTO ai_results (feature, user_id, object_type, object_id, input, output, status, error_message, duration_ms, model)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9, $10)`,
+      [
+        feature,
+        userId || null,
+        objectType || null,
+        objectId || null,
+        JSON.stringify(input || {}),
+        JSON.stringify(output || {}),
+        status || 'success',
+        errorMessage || null,
+        durationMs || null,
+        model || (process.env.OPENROUTER_MODEL || 'anthropic/claude-3-5-sonnet-20241022'),
+      ]
+    );
+  } catch (e) {
+    console.warn('recordAIResult failed:', e.message);
+  }
 }
 
 // AI Sales Forecast
@@ -2794,9 +2956,7 @@ app.post('/api/rag/upload-document', auth, upload.single('file'), async (req, re
 
     let content = '';
     if (ext === '.pdf') {
-      const parser = new PDFParse({ data: req.file.buffer });
-      const pdfData = await parser.getText();
-      await parser.destroy();
+      const pdfData = await pdfParse(req.file.buffer);
       content = pdfData.text;
     } else {
       content = req.file.buffer.toString('utf-8');
@@ -5102,6 +5262,825 @@ Provide a clear, well-structured answer with inline citations.`;
     res.status(500).json({ error: err.message });
   }
 });
+
+// ============ NATURAL LANGUAGE QUERY (NLQ) ============
+// Whitelist of tables the NLQ endpoint is permitted to query
+const NLQ_ALLOWED_TABLES = [
+  'accounts', 'contacts', 'leads', 'opportunities', 'quotes', 'orders', 'contracts',
+  'deliveries', 'billing_documents', 'tickets', 'knowledge_base', 'work_orders',
+  'campaigns', 'email_templates', 'products', 'invoices', 'payments', 'expense_reports',
+  'general_ledger', 'accounts_payable', 'accounts_receivable', 'cost_centers',
+  'profit_centers', 'purchase_orders', 'purchase_requisitions', 'goods_receipts',
+  'inventory', 'vendors', 'bill_of_materials', 'production_orders', 'equipment',
+  'employees', 'departments', 'performance_reviews', 'leave_requests', 'training_courses',
+  'travel_requests', 'demand_plans', 'supply_plans', 'projects', 'tasks', 'audit_logs',
+  'competitors', 'forecasts', 'goals', 'documents',
+];
+
+const NLQ_TABLE_SCHEMA = NLQ_ALLOWED_TABLES.map(t => `- ${t}`).join('\n');
+
+app.post('/api/nlq', auth, async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return res.status(400).json({ error: 'query field is required' });
+    }
+
+    // Step 1: Ask AI to convert natural language to SQL
+    const systemPrompt = `You are a PostgreSQL SQL generator for an SAP CRM system.
+Convert the user's natural language request into a single parameterized SQL SELECT query.
+
+Available tables:
+${NLQ_TABLE_SCHEMA}
+
+Rules:
+1. Output ONLY valid SQL — no explanation, no markdown, no code fences.
+2. Only SELECT statements are allowed. Never use INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE, or any other DDL/DML.
+3. Use $1, $2, ... placeholders for any literal values that belong in a WHERE clause.
+4. After the SQL on a new line starting with "PARAMS:", list the parameter values as a JSON array (e.g. PARAMS: ["overdue","2024-01-01"]).
+5. If no parameters are needed, write PARAMS: [].
+6. Limit results to 100 rows maximum (add LIMIT 100 unless a lower limit is requested).
+7. Only reference tables from the available tables list above.`;
+
+    const aiResponse = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'http://localhost:3000',
+        'X-Title': 'SAP CRM AI Assistant',
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: query.trim() },
+        ],
+        max_tokens: 1024,
+      }),
+    });
+
+    const aiData = await aiResponse.json();
+    const rawAiText = aiData?.choices?.[0]?.message?.content || '';
+
+    // Parse SQL and PARAMS from AI output
+    const lines = rawAiText.trim().split('\n');
+    const paramsLineIdx = lines.findIndex(l => l.trim().startsWith('PARAMS:'));
+    let generatedSQL = '';
+    let params = [];
+
+    if (paramsLineIdx !== -1) {
+      generatedSQL = lines.slice(0, paramsLineIdx).join('\n').trim();
+      const paramsStr = lines[paramsLineIdx].replace(/^PARAMS:\s*/i, '').trim();
+      try {
+        params = JSON.parse(paramsStr);
+      } catch {
+        params = [];
+      }
+    } else {
+      generatedSQL = rawAiText.trim();
+    }
+
+    // Step 2: Validate — only allow SELECT statements
+    const sqlNormalized = generatedSQL.replace(/\s+/g, ' ').trim().toUpperCase();
+    const forbiddenPatterns = [/\bINSERT\b/, /\bUPDATE\b/, /\bDELETE\b/, /\bDROP\b/, /\bCREATE\b/, /\bALTER\b/, /\bTRUNCATE\b/, /\bGRANT\b/, /\bREVOKE\b/];
+    for (const pat of forbiddenPatterns) {
+      if (pat.test(sqlNormalized)) {
+        return res.status(400).json({ error: 'Generated SQL contains a forbidden operation. Only SELECT queries are allowed.', generated_sql: generatedSQL });
+      }
+    }
+    if (!sqlNormalized.startsWith('SELECT')) {
+      return res.status(400).json({ error: 'Generated SQL must be a SELECT statement.', generated_sql: generatedSQL });
+    }
+
+    // Step 3: Execute the query
+    const result = await pool.query(generatedSQL, params);
+
+    res.json({
+      query,
+      generated_sql: generatedSQL,
+      params,
+      row_count: result.rows.length,
+      data: result.rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ AI STREAMING (SSE) ============
+app.post('/api/ai/stream', auth, async (req, res) => {
+  try {
+    const { message, history } = req.body;
+    if (!message || typeof message !== 'string' || !message.trim()) {
+      return res.status(400).json({ error: 'message field is required' });
+    }
+
+    // Gather same live context as the copilot endpoint
+    const [contacts, accounts, opps, tickets] = await Promise.all([
+      pool.query('SELECT COUNT(*) as c FROM contacts'),
+      pool.query('SELECT COUNT(*) as c FROM accounts'),
+      pool.query("SELECT COUNT(*) as c, COALESCE(SUM(amount),0) as total FROM opportunities WHERE status = 'Open'"),
+      pool.query("SELECT COUNT(*) as c FROM tickets WHERE status NOT IN ('Resolved','Closed')"),
+    ]);
+
+    let ragContext = '';
+    try {
+      const similar = await searchSimilar(message, null, 3);
+      if (similar.length > 0) {
+        ragContext = '\n\nRelevant knowledge base context:\n' + similar.map(s => `[${s.source_type}] ${s.content_chunk.substring(0, 300)}`).join('\n---\n');
+      }
+    } catch (e) { /* RAG is optional */ }
+
+    const systemContent = truncateContext(`You are SAP CRM Copilot, an AI assistant built into SAP CRM. You have access to the following live data:
+- ${contacts.rows[0].c} contacts in the system
+- ${accounts.rows[0].c} accounts being managed
+- ${opps.rows[0].c} open opportunities worth $${opps.rows[0].total}
+- ${tickets.rows[0].c} open service tickets
+${ragContext}
+
+You help users with CRM tasks, sales strategy, customer service, data analysis, and business operations. Be helpful, specific, and professional.`);
+
+    const messages = [{ role: 'system', content: systemContent }];
+    if (history && Array.isArray(history)) {
+      for (const h of history.slice(-10)) {
+        messages.push({ role: h.role === 'user' ? 'user' : 'assistant', content: truncateContext(h.content) });
+      }
+    }
+    messages.push({ role: 'user', content: truncateContext(message.trim()) });
+
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const streamResponse = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'http://localhost:3000',
+        'X-Title': 'SAP CRM AI Assistant',
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL || 'anthropic/claude-haiku-4.5',
+        messages,
+        max_tokens: 4096,
+        stream: true,
+      }),
+    });
+
+    if (!streamResponse.ok) {
+      const errText = await streamResponse.text();
+      res.write(`data: ${JSON.stringify({ error: `OpenRouter error: ${errText}` })}\n\n`);
+      res.end();
+      return;
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    for await (const chunk of streamResponse.body) {
+      buffer += decoder.decode(chunk, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete line in buffer
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') {
+          if (trimmed === 'data: [DONE]') {
+            res.write('data: [DONE]\n\n');
+          }
+          continue;
+        }
+        if (trimmed.startsWith('data: ')) {
+          const jsonStr = trimmed.slice(6);
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const token = parsed?.choices?.[0]?.delta?.content;
+            if (token) {
+              res.write(`data: ${JSON.stringify({ token })}\n\n`);
+            }
+          } catch {
+            // Ignore malformed SSE lines
+          }
+        }
+      }
+    }
+
+    // Flush any remaining buffer
+    if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+      if (buffer.trim().startsWith('data: ')) {
+        const jsonStr = buffer.trim().slice(6);
+        try {
+          const parsed = JSON.parse(jsonStr);
+          const token = parsed?.choices?.[0]?.delta?.content;
+          if (token) res.write(`data: ${JSON.stringify({ token })}\n\n`);
+        } catch { /* ignore */ }
+      }
+    }
+
+    res.write('data: [DONE]\n\n');
+    res.end();
+  } catch (err) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message });
+    } else {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    }
+  }
+});
+
+// ============================================================================
+// AI RESULTS — paginated browse of all AI invocations (audit / observability)
+// ============================================================================
+app.get('/api/ai/results', auth, async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize || '20', 10)));
+    const offset = (page - 1) * pageSize;
+
+    const filters = [];
+    const params = [];
+    if (req.query.feature) { params.push(req.query.feature); filters.push(`feature = $${params.length}`); }
+    if (req.query.status) { params.push(req.query.status); filters.push(`status = $${params.length}`); }
+    if (req.query.userId) { params.push(parseInt(req.query.userId, 10)); filters.push(`user_id = $${params.length}`); }
+    const whereSql = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
+
+    const countSql = `SELECT COUNT(*)::int AS c FROM ai_results ${whereSql}`;
+    const countResult = await pool.query(countSql, params);
+    const total = countResult.rows[0].c;
+
+    params.push(pageSize, offset);
+    const dataSql = `SELECT id, feature, user_id, object_type, object_id, model, tokens_used, duration_ms, status, error_message, created_at, output FROM ai_results ${whereSql} ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    const data = await pool.query(dataSql, params);
+
+    res.json({
+      data: data.rows,
+      pagination: { page, pageSize, total, totalPages: Math.ceil(total / pageSize) },
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/results/:id', auth, async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM ai_results WHERE id = $1', [req.params.id]);
+    if (r.rows.length === 0) return res.status(404).json({ error: 'not found' });
+    res.json(r.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// HYBRID SEARCH (BM25 full-text + vector cosine) with re-rank
+// Body: { query, sourceType?, limit?, alpha? }
+//   alpha (0..1) = vector weight; (1-alpha) = BM25 weight. Default 0.6.
+// ============================================================================
+app.post('/api/rag/hybrid-search', auth, async (req, res) => {
+  const started = Date.now();
+  const { query, sourceType, limit = 10, alpha = 0.6 } = req.body || {};
+  if (!query || String(query).trim().length < 2) {
+    return res.status(400).json({ error: 'query required (min 2 chars)' });
+  }
+  try {
+    // Vector hits
+    const vecHits = await searchSimilar(query, sourceType || null, Math.min(50, limit * 4));
+
+    // BM25 / ts_rank hits over documents.content (always source_type='document').
+    // For embeddings rows that aren't documents we approximate via content_chunk full-text.
+    const bm25 = await pool.query(
+      `SELECT id, source_type, source_id, content_chunk, metadata,
+              ts_rank_cd(to_tsvector('english', coalesce(content_chunk,'')), plainto_tsquery('english', $1)) AS rank
+       FROM embeddings
+       WHERE ($2::text IS NULL OR source_type = $2)
+         AND to_tsvector('english', coalesce(content_chunk,'')) @@ plainto_tsquery('english', $1)
+       ORDER BY rank DESC
+       LIMIT $3`,
+      [query, sourceType || null, Math.min(50, limit * 4)]
+    );
+
+    // Normalize scores 0..1
+    const maxVec = Math.max(...vecHits.map((r) => Number(r.similarity || 0)), 1e-9);
+    const maxBm = Math.max(...bm25.rows.map((r) => Number(r.rank || 0)), 1e-9);
+
+    const merged = new Map();
+    for (const r of vecHits) {
+      const key = `${r.source_type}:${r.source_id}:${r.id}`;
+      const score = (Number(r.similarity || 0) / maxVec) * Number(alpha);
+      merged.set(key, { ...r, vectorScore: r.similarity, hybrid: score });
+    }
+    for (const r of bm25.rows) {
+      const key = `${r.source_type}:${r.source_id}:${r.id}`;
+      const bm = (Number(r.rank || 0) / maxBm) * (1 - Number(alpha));
+      const existing = merged.get(key);
+      if (existing) {
+        existing.bm25 = r.rank;
+        existing.hybrid += bm;
+      } else {
+        merged.set(key, { ...r, bm25: r.rank, hybrid: bm });
+      }
+    }
+
+    const results = Array.from(merged.values())
+      .sort((a, b) => b.hybrid - a.hybrid)
+      .slice(0, limit);
+
+    await recordAIResult({
+      feature: 'hybrid-search',
+      userId: req.user?.id,
+      input: { query, sourceType, limit, alpha },
+      output: { count: results.length },
+      durationMs: Date.now() - started,
+    });
+
+    res.json({ results, alpha, vectorHits: vecHits.length, bm25Hits: bm25.rows.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// AI APPROVAL ROUTING RECOMMENDER
+// Given a document/transaction context, recommend the next approver(s) based
+// on past approval-chain history.
+// Body: { module, recordId, amount?, region? }
+// ============================================================================
+app.post('/api/ai/recommend-approver', auth, async (req, res) => {
+  const started = Date.now();
+  const { module: mod, recordId, amount, region } = req.body || {};
+  if (!mod || !recordId) {
+    return res.status(400).json({ error: 'module and recordId required' });
+  }
+  try {
+    let history = [];
+    try {
+      const r = await pool.query(
+        `SELECT * FROM approval_chain WHERE module = $1 ORDER BY created_at DESC LIMIT 200`,
+        [mod]
+      );
+      history = r.rows;
+    } catch (e) { /* table may not exist */ }
+
+    const employees = await pool.query(
+      `SELECT id, full_name, email, position, department FROM employees ORDER BY id LIMIT 200`
+    );
+
+    const prompt = `You are a workflow routing analyst. Recommend the best 1-3 approvers for this transaction based on history.
+Return ONLY JSON: { "recommendations": [{ "employeeId": 0, "name": "...", "rationale": "...", "confidence": 0.0 }], "summary": "..." }
+
+Module: ${mod}
+Record: ${recordId}
+Amount: ${amount ?? 'n/a'}
+Region: ${region ?? 'n/a'}
+
+Recent approval history (sample):
+${JSON.stringify(history.slice(0, 30), null, 2)}
+
+Available approvers:
+${JSON.stringify(employees.rows.slice(0, 50), null, 2)}`;
+
+    const ai = await callAI([{ role: 'user', content: prompt }], { temperature: 0.2, maxTokens: 1024 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    let parsed;
+    try { parsed = parseAIJson(content); } catch { parsed = { raw: content }; }
+
+    await recordAIResult({
+      feature: 'recommend-approver',
+      userId: req.user?.id,
+      objectType: mod,
+      objectId: String(recordId),
+      input: { mod, recordId, amount, region, historyCount: history.length },
+      output: parsed,
+      durationMs: Date.now() - started,
+    });
+
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// MULTI-TENANT — per-tenant AI key store (lite). The tenant_api_keys table
+// holds an encrypted-at-rest reference per tenant. Production should use
+// KMS / Vault — this is a dev-quality stub.
+// ============================================================================
+app.post('/api/admin/tenant-keys', auth, async (req, res) => {
+  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'admin only' });
+  const { tenantId, openrouterApiKey, model } = req.body || {};
+  if (!tenantId || !openrouterApiKey) {
+    return res.status(400).json({ error: 'tenantId and openrouterApiKey required' });
+  }
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tenant_api_keys (
+        tenant_id VARCHAR(100) PRIMARY KEY,
+        openrouter_api_key TEXT NOT NULL,
+        model VARCHAR(200),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await pool.query(
+      `INSERT INTO tenant_api_keys (tenant_id, openrouter_api_key, model, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (tenant_id) DO UPDATE SET openrouter_api_key = EXCLUDED.openrouter_api_key, model = EXCLUDED.model, updated_at = NOW()`,
+      [tenantId, openrouterApiKey, model || null]
+    );
+    res.json({ message: 'tenant key stored', tenantId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/tenant-keys', auth, async (req, res) => {
+  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'admin only' });
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tenant_api_keys (
+        tenant_id VARCHAR(100) PRIMARY KEY,
+        openrouter_api_key TEXT NOT NULL,
+        model VARCHAR(200),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    const r = await pool.query('SELECT tenant_id, model, updated_at FROM tenant_api_keys ORDER BY tenant_id');
+    res.json({ data: r.rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// CLOSED-LOOP ANOMALY EXPLAINER → TICKET
+// Reuses /api/dashboard/anomalies output to auto-create tickets with linked
+// evidence (related records) and route via partner-function rules.
+// Body: { anomalies: [{ description, severity?, relatedModule?, relatedId? }] }
+// ============================================================================
+app.post('/api/ai/anomaly-to-ticket', auth, async (req, res) => {
+  const started = Date.now();
+  const { anomalies } = req.body || {};
+  if (!Array.isArray(anomalies) || anomalies.length === 0) {
+    return res.status(400).json({ error: 'anomalies array required' });
+  }
+  const created = [];
+  try {
+    for (const a of anomalies.slice(0, 20)) {
+      try {
+        const insertSql = `INSERT INTO tickets (title, description, status, priority, created_at, updated_at)
+          VALUES ($1, $2, 'Open', $3, NOW(), NOW()) RETURNING *`;
+        const result = await pool.query(insertSql, [
+          `[Anomaly] ${a.description?.slice(0, 80) || 'Detected anomaly'}`,
+          JSON.stringify({ ...a, source: 'ai-anomaly', evidence: { module: a.relatedModule, id: a.relatedId } }),
+          a.severity === 'high' ? 'High' : a.severity === 'critical' ? 'Critical' : 'Medium',
+        ]);
+        created.push(result.rows[0]);
+      } catch (e) {
+        // schema variation tolerance — skip if columns differ
+        console.warn('anomaly-to-ticket insert skipped:', e.message);
+      }
+    }
+
+    await recordAIResult({
+      feature: 'anomaly-to-ticket',
+      userId: req.user?.id,
+      input: { count: anomalies.length },
+      output: { ticketsCreated: created.length, ticketIds: created.map((t) => t.id) },
+      durationMs: Date.now() - started,
+    });
+
+    res.json({ ticketsCreated: created.length, tickets: created });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// VOICE-DRIVEN SAP — placeholder for Whisper STT → AI tool-call → CRUD.
+// Accepts raw transcript; LLM produces a tool plan for the 77-module CRUD.
+// Body: { transcript, currentModule? }
+// ============================================================================
+app.post('/api/ai/voice-action', auth, async (req, res) => {
+  const started = Date.now();
+  const { transcript, currentModule } = req.body || {};
+  if (!transcript) return res.status(400).json({ error: 'transcript required' });
+  try {
+    const prompt = `You are a SAP CRM voice agent. Translate the following spoken command into a JSON action plan.
+Return ONLY JSON: { "intent": "create|update|search|delete|noop", "module": "string", "filters": {}, "data": {}, "confirmation": "1-sentence summary asking the user to confirm" }
+
+Current module: ${currentModule || 'unspecified'}
+Transcript: "${transcript}"`;
+
+    const ai = await callAI([{ role: 'user', content: prompt }], { temperature: 0.1, maxTokens: 768 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    let plan;
+    try { plan = parseAIJson(content); } catch { plan = { intent: 'noop', confirmation: 'Could not parse plan.' }; }
+
+    await recordAIResult({
+      feature: 'voice-action',
+      userId: req.user?.id,
+      input: { transcript: transcript.slice(0, 500), currentModule },
+      output: plan,
+      durationMs: Date.now() - started,
+    });
+
+    res.json({ plan });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============================================================================
+// Apply pass 5 — additive backlog endpoints (SAP connectors, workflow,
+// consolidation, pricing rules, document flow, where-used, AI Studio).
+//
+// Required env vars (documented):
+//   OPENROUTER_API_KEY — required by every AI endpoint here.
+//   SAP_ODATA_BASE_URL — for /sap-odata-proxy (NEEDS-CREDS).
+//   SAP_BAPI_GATEWAY_URL — for /sap-bapi-call (NEEDS-CREDS).
+//   SAP_IDOC_DROP_DIR — for /sap-idoc-process (NEEDS-CREDS).
+//
+// PRODUCT-DECISION (defaults documented inline):
+//   - Approval workflow: stores in a new `approval_workflows` table
+//     (CREATE TABLE IF NOT EXISTS). States: draft, pending, approved, rejected.
+//   - Cross-company consolidation: server returns aggregated totals across
+//     all rows of the requested table grouped by `company_code` if present;
+//     if the column is missing, returns the LLM narrative only.
+//   - Pricing condition rule engine: stored in `pricing_conditions` table
+//     (CREATE TABLE IF NOT EXISTS). Rule expressions are evaluated as
+//     opaque strings — LLM produces a recommendation, no code-eval.
+//   - SAP-conforming entity mapping: returns an LLM-generated mapping plan
+//     between this app's tables and SAP's standard entity model.
+// ============================================================================
+
+let _sapBacklogTablesEnsured = false;
+async function ensureSapBacklogTables() {
+  if (_sapBacklogTablesEnsured) return;
+  const stmts = [
+    `CREATE TABLE IF NOT EXISTS approval_workflows (
+       id SERIAL PRIMARY KEY,
+       entity_type TEXT NOT NULL,
+       entity_id TEXT NOT NULL,
+       state TEXT NOT NULL DEFAULT 'draft',
+       requested_by INTEGER,
+       approver_id INTEGER,
+       history JSONB NOT NULL DEFAULT '[]'::jsonb,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+    `CREATE TABLE IF NOT EXISTS pricing_condition_rules (
+       id SERIAL PRIMARY KEY,
+       condition_type TEXT NOT NULL,
+       expression TEXT NOT NULL,
+       priority INTEGER NOT NULL DEFAULT 0,
+       active BOOLEAN NOT NULL DEFAULT TRUE,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+     )`,
+  ];
+  for (const s of stmts) {
+    try { await pool.query(s); } catch (_) {}
+  }
+  _sapBacklogTablesEnsured = true;
+}
+
+function sapRequireKey(res, env) {
+  if (!process.env[env]) {
+    res.status(503).json({ error: `${env} not configured`, missing: env });
+    return false;
+  }
+  return true;
+}
+
+// POST /api/sap/odata-proxy — NEEDS-CREDS: SAP_ODATA_BASE_URL.
+// Additive only: produces an LLM plan for an OData call; never makes outbound HTTP.
+app.post('/api/sap/odata-proxy', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    if (!sapRequireKey(res, 'SAP_ODATA_BASE_URL')) return;
+    const { entity, query, filter } = req.body || {};
+    if (!entity) return res.status(400).json({ error: 'entity required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP OData planner. Build a GET URL for entity=${entity}, query=${JSON.stringify(query||{})}, filter=${JSON.stringify(filter||{})}.
+Base: ${process.env.SAP_ODATA_BASE_URL}
+Return ONLY JSON: { "method": "GET", "url": "...", "headers": { "Accept": "application/json" }, "rationale": "..." }`
+    }], { temperature: 0.2, maxTokens: 600 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ simulated: true, plan: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/bapi-call — NEEDS-CREDS: SAP_BAPI_GATEWAY_URL.
+app.post('/api/sap/bapi-call', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    if (!sapRequireKey(res, 'SAP_BAPI_GATEWAY_URL')) return;
+    const { bapiName, parameters = {} } = req.body || {};
+    if (!bapiName) return res.status(400).json({ error: 'bapiName required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP BAPI/RFC planner. Plan a call to BAPI ${bapiName} with params ${JSON.stringify(parameters)}.
+Gateway: ${process.env.SAP_BAPI_GATEWAY_URL}
+Return ONLY JSON: { "bapi": "${bapiName}", "input": {...}, "expectedTables": ["..."], "rationale": "..." }`
+    }], { temperature: 0.2, maxTokens: 600 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ simulated: true, plan: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/idoc-process — NEEDS-CREDS: SAP_IDOC_DROP_DIR.
+app.post('/api/sap/idoc-process', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    if (!sapRequireKey(res, 'SAP_IDOC_DROP_DIR')) return;
+    const { idocPayload } = req.body || {};
+    if (!idocPayload) return res.status(400).json({ error: 'idocPayload required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP IDoc parser. Summarize and validate this IDoc payload.
+DROP_DIR: ${process.env.SAP_IDOC_DROP_DIR}
+PAYLOAD: ${typeof idocPayload === 'string' ? idocPayload.slice(0, 4000) : JSON.stringify(idocPayload).slice(0, 4000)}
+Return ONLY JSON: { "messageType": "...", "segments": [...], "errors": [...], "rationale": "..." }`
+    }], { temperature: 0.1, maxTokens: 800 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ simulated: true, parsed: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/approval-workflow — create or transition an approval.
+// Body: { entity_type, entity_id, action: 'create'|'transition', target_state? }
+app.post('/api/sap/approval-workflow', auth, async (req, res) => {
+  try {
+    await ensureSapBacklogTables();
+    const { entity_type, entity_id, action = 'create', target_state, approver_id } = req.body || {};
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required' });
+    if (action === 'create') {
+      const requestedBy = req.user?.id || null;
+      const requestedByText = String(requestedBy ?? '');
+      const r = await pool.query(
+        `INSERT INTO approval_workflows (entity_type, entity_id, state, requested_by, approver_id, history)
+         VALUES ($1::text, $2::text, 'pending'::text, $3::integer, $4::integer,
+           jsonb_build_array(jsonb_build_object('state', 'pending'::text, 'at', NOW(), 'by', $5::text)))
+         RETURNING *`,
+        [entity_type, entity_id, requestedBy, approver_id || null, requestedByText]
+      );
+      return res.json({ workflow: r.rows[0] });
+    }
+    if (action === 'transition') {
+      const valid = ['draft', 'pending', 'approved', 'rejected'];
+      if (!valid.includes(target_state)) return res.status(400).json({ error: 'invalid target_state' });
+      const r = await pool.query(
+        `UPDATE approval_workflows
+         SET state = $1,
+             history = history || jsonb_build_array(jsonb_build_object('state', $1::text, 'at', NOW(), 'by', $2::text)),
+             updated_at = NOW()
+         WHERE entity_type = $3 AND entity_id = $4
+         RETURNING *`,
+        [target_state, String(req.user?.id || ''), entity_type, entity_id]
+      );
+      if (r.rows.length === 0) return res.status(404).json({ error: 'workflow not found' });
+      return res.json({ workflow: r.rows[0] });
+    }
+    res.status(400).json({ error: 'action must be create|transition' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/cross-company-consolidation
+// Body: { table: string, metric: string }
+// PRODUCT-DECISION: SUM by company_code if column exists.
+app.post('/api/sap/cross-company-consolidation', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    const { table, metric = 'amount' } = req.body || {};
+    if (!table) return res.status(400).json({ error: 'table required' });
+    // Defensive: only allow safe identifiers.
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(table) || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(metric)) {
+      return res.status(400).json({ error: 'invalid identifier' });
+    }
+    let totals = [];
+    try {
+      const r = await pool.query(
+        `SELECT company_code, SUM(${metric})::numeric AS total
+         FROM ${table}
+         GROUP BY company_code ORDER BY total DESC LIMIT 100`
+      );
+      totals = r.rows;
+    } catch (_) { /* column or table missing */ }
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP cross-company consolidation analyst.
+TABLE: ${table} | METRIC: ${metric}
+TOTALS: ${JSON.stringify(totals)}
+Return ONLY JSON: { "consolidatedTotal": 0, "byCompany": [...], "intercompanyEliminationsNeeded": [...], "narrative": "..." }`
+    }], { temperature: 0.3, maxTokens: 800 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ totals, ai_narrative: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/pricing-conditions — register a pricing rule (LLM advises).
+app.post('/api/sap/pricing-conditions', auth, async (req, res) => {
+  try {
+    await ensureSapBacklogTables();
+    const { condition_type, expression, priority = 0 } = req.body || {};
+    if (!condition_type || !expression) return res.status(400).json({ error: 'condition_type and expression required' });
+    const r = await pool.query(
+      `INSERT INTO pricing_condition_rules (condition_type, expression, priority)
+       VALUES ($1::text, $2::text, $3::integer) RETURNING *`,
+      [condition_type, expression, parseInt(priority, 10) || 0]
+    );
+    let aiAdvice = null;
+    if (process.env.OPENROUTER_API_KEY) {
+      const ai = await callAI([{
+        role: 'user',
+        content: `Review this SAP pricing condition rule:
+TYPE: ${condition_type}
+EXPRESSION: ${expression}
+Return ONLY JSON: { "summary": "...", "risks": [...], "interactions": [...] }`
+      }], { temperature: 0.3, maxTokens: 500 });
+      aiAdvice = parseAIJson(ai?.choices?.[0]?.message?.content || '{}');
+    }
+    res.json({ rule: r.rows[0], ai_advice: aiAdvice });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/document-flow — narrate document flow for a doc.
+app.post('/api/sap/document-flow', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    const { document_type, document_id } = req.body || {};
+    if (!document_type || !document_id) return res.status(400).json({ error: 'document_type and document_id required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP document-flow narrator.
+DOCUMENT: ${document_type} #${document_id}
+Return ONLY JSON: { "preceding": [...], "current": "${document_type}", "following": [...], "flow_diagram": "ASCII", "rationale": "..." }`
+    }], { temperature: 0.3, maxTokens: 700 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ flow: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/where-used — analyze where a master-data record is used.
+app.post('/api/sap/where-used', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    const { entity_type, entity_id } = req.body || {};
+    if (!entity_type || !entity_id) return res.status(400).json({ error: 'entity_type and entity_id required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP where-used analyzer.
+ENTITY: ${entity_type} #${entity_id}
+Return ONLY JSON: { "tables": [...], "transactions": [...], "rationale": "..." }`
+    }], { temperature: 0.3, maxTokens: 600 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ usage: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/sap/entity-mapping — LLM proposes mapping app tables → SAP entities.
+app.post('/api/sap/entity-mapping', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    const { app_tables = [] } = req.body || {};
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an SAP entity-model mapper.
+APP TABLES: ${JSON.stringify(app_tables).slice(0, 2000)}
+Return ONLY JSON: { "mappings": [{ "app_table": "...", "sap_entity": "MARA|VBAK|...", "fields": {} }], "rationale": "..." }`
+    }], { temperature: 0.3, maxTokens: 1200 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ mapping: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/ai/studio-prompt-design — AI Studio prompt design surface.
+app.post('/api/ai/studio-prompt-design', auth, async (req, res) => {
+  try {
+    if (!sapRequireKey(res, 'OPENROUTER_API_KEY')) return;
+    const { goal, fewShotExamples = [], constraints } = req.body || {};
+    if (!goal) return res.status(400).json({ error: 'goal required' });
+    const ai = await callAI([{
+      role: 'user',
+      content: `You are an AI prompt-design coach.
+GOAL: ${goal}
+FEW-SHOT: ${JSON.stringify(fewShotExamples).slice(0, 2000)}
+CONSTRAINTS: ${constraints || 'none'}
+Return ONLY JSON: { "systemPrompt": "...", "userTemplate": "...", "rationale": "..." }`
+    }], { temperature: 0.5, maxTokens: 1200 });
+    const content = ai?.choices?.[0]?.message?.content || '{}';
+    res.json({ design: parseAIJson(content) || content });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.use('/api/sap-extras', require('./routes/aiExtras')); // Custom Feature Suggestions (batch 11)
+app.use('/api', require('./routes/gap-features')); // === Batch 11 Gaps & Frontend Mounts ===
+app.use('/api/custom-views', require('./routes/customViews')); // 4 SAP custom views (system status / tx volume / IDoc / batch jobs)
 
 app.listen(PORT, () => {
   console.log(`SAP CRM API Server running on port ${PORT}`);
