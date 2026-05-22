@@ -21,8 +21,12 @@ import Settings from './pages/Settings';
 import Reports from './pages/Reports';
 import Calendar from './pages/Calendar';
 import Approvals from './pages/Approvals';
+import ApprovalExposure from './pages/ApprovalExposure';
 import { callAI } from './api';
 import { FiGrid, FiCpu, FiLogOut, FiMenu, FiX, FiChevronDown, FiChevronRight, FiUser, FiSearch, FiSettings, FiBarChart2, FiCalendar, FiCheckSquare } from 'react-icons/fi';
+
+import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
+import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
 const sampleSearches = [
   'Show all overdue invoices over $10,000',
@@ -266,6 +270,10 @@ function Layout({ user, onLogout, children }) {
               <FiCheckSquare size={18} />
               <span>Approvals</span>
             </Link>
+            <Link to="/approval-exposure" className={`sidebar-item ${isActive('/approval-exposure') ? 'active' : ''}`}>
+              <FiCheckSquare size={18} />
+              <span>Approval Exposure</span>
+            </Link>
             <Link to="/custom-views" className={`sidebar-item ${isActive('/custom-views') ? 'active' : ''}`}>
               <FiGrid size={18} />
               <span>SAP Views</span>
@@ -322,6 +330,9 @@ export default function App() {
   if (!user) {
     return (
       <Routes>
+        <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
+        <Route path="/codex/operations" element={<CodexOperationsFeature />} />
+
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -338,6 +349,7 @@ export default function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/approvals" element={<Approvals />} />
+        <Route path="/approval-exposure" element={<ApprovalExposure />} />
         <Route path="/custom-views" element={<CustomViewsPage />} />
         <Route path="/:moduleKey" element={<ModulePage />} />
         <Route path="/:moduleKey/:id" element={<DetailPage />} />

@@ -8,7 +8,7 @@ function getHeaders() {
   };
 }
 
-async function request(url, options = {}) {
+export async function request(url, options = {}) {
   const res = await fetch(url, { ...options, headers: { ...getHeaders(), ...options.headers } });
   if (res.status === 401) {
     localStorage.removeItem('token');
