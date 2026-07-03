@@ -1,6 +1,51 @@
 const pool = require('./db');
 const bcrypt = require('bcryptjs');
 
+const extendedSapTables = [
+  'ewm_warehouse_tasks', 'ewm_wave_picks',
+  'transportation_freight_orders', 'transportation_planning',
+  'project_system_wbs', 'project_system_networks',
+  'treasury_cash_positions', 'treasury_deals',
+  'grc_access_risks', 'grc_controls',
+  'fieldglass_workers', 'fieldglass_work_orders',
+  'commerce_catalogs', 'commerce_carts',
+  'analytics_stories', 'datasphere_data_flows',
+  'subscription_contracts', 'group_reporting',
+  'ehs_incidents', 'real_estate_contracts', 'plm_change_records',
+  'advanced_atp_checks', 'settlement_rebates', 'localization_tax_rules',
+  'basis_system_jobs', 'payroll_runs', 'time_sheets',
+  'mdg_change_requests', 'mdg_data_quality',
+  'central_finance_documents', 'central_finance_mappings',
+  'credit_management_cases', 'dispute_management_cases', 'collections_worklists', 'cash_application_items',
+  'integration_suite_flows', 'btp_subaccounts', 'event_mesh_topics', 'api_management_products',
+  'ilm_retention_policies', 'document_management_files', 'variant_config_models', 'product_compliance_specs',
+  'service_management_orders', 'field_service_assignments', 'customer_identity_profiles', 'customer_data_segments',
+  'industry_utilities_devices', 'industry_utilities_billing', 'industry_retail_assortments', 'industry_retail_promotions',
+  'industry_oil_gas_nominations', 'industry_banking_loans', 'industry_insurance_claims', 'industry_public_sector_grants',
+  'industry_healthcare_cases', 'industry_higher_ed_students', 'industry_defense_contracts', 'industry_aerospace_programs',
+  'sustainability_esg_metrics', 'green_ledger_entries', 'signavio_process_models', 'process_mining_cases',
+  'cloud_alm_projects', 'cloud_alm_operations', 'solution_manager_changes', 'solution_manager_test_plans',
+  'leanix_applications', 'walkme_guidance', 'joule_skills', 'ai_core_deployments',
+  'build_apps_projects', 'build_process_automations', 'build_work_zone_sites',
+  'identity_authentication_apps', 'identity_provisioning_jobs', 'btp_abap_environments',
+  'btp_kyma_workloads', 'cap_services', 'hana_cloud_databases', 'bw4hana_queries',
+  'data_intelligence_pipelines',
+  'successfactors_employee_central', 'successfactors_learning', 'successfactors_goals',
+  'successfactors_workforce_analytics', 'sales_cloud_opportunities', 'service_cloud_cases',
+  'cpq_quotes', 'emarsys_campaigns', 'customer_checkout_pos', 'digital_payments',
+  'digital_manufacturing_orders', 'manufacturing_execution_operations', 'manufacturing_insights',
+  'asset_performance_models', 'asset_network_collaboration', 'yard_logistics_appointments',
+  'logistics_business_network_shipments',
+  'advanced_financial_close_tasks', 'revenue_accounting_contracts', 'profitability_performance_models',
+  'document_reporting_compliance', 'contract_accounts_receivable_payable', 'funds_management_budget',
+  'joint_venture_accounting', 'commodity_management_deals', 'trade_promotion_management',
+  'sales_performance_management', 'territory_quota_plans', 'enterprise_portfolio_initiatives',
+  'innovation_management_ideas', 'sourcing_supplier_network', 'supplier_risk_assessments',
+  'quality_issue_resolution', 'audit_management_plans', 'environment_management_permits',
+  'waste_management_records', 'mobile_start_cards', 'fiori_launchpad_spaces', 'enable_now_content',
+  'business_network_assets', 'business_network_material_traceability',
+];
+
 async function seed() {
   const client = await pool.connect();
   try {
@@ -8,7 +53,7 @@ async function seed() {
 
     // DROP ALL TABLES
     await client.query(`
-      DROP TABLE IF EXISTS supply_plans, demand_plans, travel_bookings, travel_requests, succession_planning, compensation, onboarding, recruiting, procurement_contracts, sourcing_events, stock_transfers, warehouse_orders, storage_bins, quality_plans, quality_notifications, inspection_lots, functional_locations, maintenance_plans, maintenance_orders, equipment, routings, work_centers, mrp_runs, production_orders, bill_of_materials, inventory, goods_receipts, purchase_requisitions, purchase_orders, profitability_analysis, internal_orders, profit_centers, cost_centers, bank_accounting, asset_accounting, accounts_receivable, accounts_payable, general_ledger, material_master, returns, billing_documents, shipments, deliveries, notifications, audit_logs, forecasts, competitors, territories, vendors, goals, activities, tasks, projects, training_courses, leave_requests, performance_reviews, departments, employees, expense_reports, payments, invoices, price_lists, products, customer_segments, email_templates, campaigns, sla_policies, work_orders, knowledge_base, tickets, contracts, orders, quotes, opportunities, leads, contacts, accounts, users CASCADE
+      DROP TABLE IF EXISTS ${extendedSapTables.join(', ')}, supply_plans, demand_plans, travel_bookings, travel_requests, succession_planning, compensation, onboarding, recruiting, procurement_contracts, sourcing_events, stock_transfers, warehouse_orders, storage_bins, quality_plans, quality_notifications, inspection_lots, functional_locations, maintenance_plans, maintenance_orders, equipment, routings, work_centers, mrp_runs, production_orders, bill_of_materials, inventory, goods_receipts, purchase_requisitions, purchase_orders, profitability_analysis, internal_orders, profit_centers, cost_centers, bank_accounting, asset_accounting, accounts_receivable, accounts_payable, general_ledger, material_master, returns, billing_documents, shipments, deliveries, notifications, audit_logs, forecasts, competitors, territories, vendors, goals, activities, tasks, projects, training_courses, leave_requests, performance_reviews, departments, employees, expense_reports, payments, invoices, price_lists, products, customer_segments, email_templates, campaigns, sla_policies, work_orders, knowledge_base, tickets, contracts, orders, quotes, opportunities, leads, contacts, accounts, users CASCADE
     `);
 
     // Helper to bulk insert
@@ -101,6 +146,28 @@ async function seed() {
       CREATE TABLE supply_plans (id SERIAL PRIMARY KEY, plan_id VARCHAR(50), product_family VARCHAR(100), region VARCHAR(100), planning_period VARCHAR(50), planned_quantity DECIMAL(15,2), available_capacity DECIMAL(15,2), utilization_percent DECIMAL(5,2), supply_source VARCHAR(100), lead_time_days INT, safety_stock DECIMAL(15,2), planner VARCHAR(255), last_updated DATE, status VARCHAR(50) DEFAULT 'Draft', created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW());
     `);
     console.log('Tables created');
+
+    for (const table of extendedSapTables) {
+      await client.query(`
+        CREATE TABLE ${table} (
+          id SERIAL PRIMARY KEY,
+          code VARCHAR(80) UNIQUE NOT NULL,
+          name VARCHAR(255) NOT NULL,
+          category VARCHAR(100),
+          process_area VARCHAR(120),
+          owner VARCHAR(255),
+          amount DECIMAL(15,2),
+          currency VARCHAR(10) DEFAULT 'EUR',
+          start_date DATE,
+          end_date DATE,
+          status VARCHAR(50) DEFAULT 'Active',
+          notes TEXT,
+          created_at TIMESTAMP DEFAULT NOW(),
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `);
+    }
+    console.log('Extended SAP module tables created');
 
     // SEED USERS
     const hash = await bcrypt.hash('password123', 10);
@@ -1600,6 +1667,157 @@ async function seed() {
       ['SP-PLN-2026-014','Precision Tools','Eastern Europe','2026-Q2',7800,8000,97.5,'Make to Stock',18,1400,'Carlos Santos','2026-02-13','Active'],
       ['SP-PLN-2026-015','Industrial Sensors','DACH','2025-Q4',11800,14000,84.3,'Make to Stock',14,2500,'Raj Patel','2026-01-05','Archived'],
     ]);
+
+    const extendedSapSeeds = {
+      ewm_warehouse_tasks: { prefix: 'EWM-TASK', name: 'Warehouse Task', categories: ['Picking', 'Putaway', 'Replenishment', 'Physical Inventory', 'Exception'], area: 'Design to Operate' },
+      ewm_wave_picks: { prefix: 'EWM-WAVE', name: 'Wave Pick', categories: ['Wave', 'Pick Pack', 'Staging', 'Labor', 'Outbound'], area: 'Design to Operate' },
+      transportation_freight_orders: { prefix: 'TM-FO', name: 'Freight Order', categories: ['Road', 'Ocean', 'Air', 'Rail', 'Parcel'], area: 'Order to Cash' },
+      transportation_planning: { prefix: 'TM-PLAN', name: 'Transportation Plan', categories: ['Lane', 'Tender', 'Optimizer', 'Carrier', 'Freight Unit'], area: 'Order to Cash' },
+      project_system_wbs: { prefix: 'PS-WBS', name: 'WBS Element', categories: ['Capital Project', 'Customer Project', 'Internal Project', 'Milestone', 'Budget'], area: 'Plan to Produce' },
+      project_system_networks: { prefix: 'PS-NET', name: 'Project Network', categories: ['Network', 'Activity', 'Confirmation', 'Procurement', 'Settlement'], area: 'Plan to Produce' },
+      treasury_cash_positions: { prefix: 'TR-CASH', name: 'Cash Position', categories: ['Cash Position', 'Liquidity', 'Bank', 'Forecast', 'Exposure'], area: 'Record to Report' },
+      treasury_deals: { prefix: 'TR-DEAL', name: 'Treasury Deal', categories: ['FX', 'Money Market', 'Loan', 'Hedge', 'Counterparty'], area: 'Record to Report' },
+      grc_access_risks: { prefix: 'GRC-RISK', name: 'Access Risk', categories: ['SoD', 'Critical Access', 'Mitigation', 'Emergency Access', 'Role Risk'], area: 'Governance' },
+      grc_controls: { prefix: 'GRC-CTRL', name: 'Process Control', categories: ['Preventive', 'Detective', 'Manual', 'Automated', 'Remediation'], area: 'Governance' },
+      fieldglass_workers: { prefix: 'FG-WKR', name: 'External Worker', categories: ['Contingent', 'Services', 'Statement of Work', 'Supplier', 'Compliance'], area: 'Hire to Retire' },
+      fieldglass_work_orders: { prefix: 'FG-WO', name: 'External Work Order', categories: ['Work Order', 'SOW', 'Service Entry', 'Approval', 'Invoice'], area: 'Procure to Pay' },
+      commerce_catalogs: { prefix: 'CX-CAT', name: 'Commerce Catalog', categories: ['Catalog', 'Product', 'Price', 'Promotion', 'Storefront'], area: 'Lead to Cash' },
+      commerce_carts: { prefix: 'CX-CART', name: 'Commerce Cart', categories: ['Cart', 'Checkout', 'Promotion', 'Order Capture', 'Abandoned'], area: 'Lead to Cash' },
+      analytics_stories: { prefix: 'SAC', name: 'Analytics Story', categories: ['Dashboard', 'Planning', 'Predictive', 'Boardroom', 'KPI'], area: 'Record to Report' },
+      datasphere_data_flows: { prefix: 'DSP-FLOW', name: 'Datasphere Data Flow', categories: ['Space', 'Data Product', 'Replication', 'Transformation', 'Lineage'], area: 'Governance' },
+      subscription_contracts: { prefix: 'BRIM-SUB', name: 'Subscription Contract', categories: ['Subscription', 'Usage', 'Rating', 'Convergent Invoice', 'Revenue'], area: 'Lead to Cash' },
+      group_reporting: { prefix: 'GRP-RPT', name: 'Group Reporting Task', categories: ['Consolidation', 'Elimination', 'Intercompany', 'Currency Translation', 'Close'], area: 'Record to Report' },
+      ehs_incidents: { prefix: 'EHS-INC', name: 'EHS Incident', categories: ['Incident', 'Investigation', 'Corrective Action', 'Compliance', 'Risk'], area: 'Design to Operate' },
+      real_estate_contracts: { prefix: 'REFX', name: 'Real Estate Contract', categories: ['Lease', 'Rental Object', 'Condition', 'Renewal', 'Valuation'], area: 'Record to Report' },
+      plm_change_records: { prefix: 'PLM-CR', name: 'PLM Change Record', categories: ['Engineering Change', 'BOM Change', 'Specification', 'Release', 'Impact'], area: 'Design to Operate' },
+      advanced_atp_checks: { prefix: 'AATP', name: 'ATP Check', categories: ['Availability', 'Allocation', 'Substitution', 'Backorder', 'Confirmation'], area: 'Order to Cash' },
+      settlement_rebates: { prefix: 'SETL-RBT', name: 'Settlement Rebate', categories: ['Rebate', 'Accrual', 'Claim', 'Condition Contract', 'Settlement'], area: 'Procure to Pay' },
+      localization_tax_rules: { prefix: 'LOC-TAX', name: 'Localization Tax Rule', categories: ['VAT', 'Withholding', 'E-Invoice', 'Statutory Report', 'Localization'], area: 'Record to Report' },
+      basis_system_jobs: { prefix: 'BASIS-JOB', name: 'Basis System Job', categories: ['Batch Job', 'Transport', 'Dump', 'Lock', 'System Health'], area: 'Governance' },
+      payroll_runs: { prefix: 'PY-RUN', name: 'Payroll Run', categories: ['Regular Payroll', 'Off Cycle', 'Retro', 'Posting', 'Exception'], area: 'Hire to Retire' },
+      time_sheets: { prefix: 'CATS', name: 'Time Sheet', categories: ['Attendance', 'Overtime', 'Absence', 'Approval', 'Costing'], area: 'Hire to Retire' },
+      mdg_change_requests: { prefix: 'MDG-CR', name: 'MDG Change Request', categories: ['Business Partner', 'Material', 'Supplier', 'Finance', 'Hierarchy'], area: 'Governance' },
+      mdg_data_quality: { prefix: 'MDG-DQ', name: 'MDG Data Quality Rule', categories: ['Completeness', 'Duplicate', 'Validation', 'Enrichment', 'Remediation'], area: 'Governance' },
+      central_finance_documents: { prefix: 'CFIN-DOC', name: 'Central Finance Document', categories: ['Replication', 'Mapping', 'Reconciliation', 'Error', 'Posted'], area: 'Record to Report' },
+      central_finance_mappings: { prefix: 'CFIN-MAP', name: 'Central Finance Mapping', categories: ['Company Code', 'GL Account', 'Cost Object', 'Profit Center', 'Business Partner'], area: 'Record to Report' },
+      credit_management_cases: { prefix: 'FSCM-CRD', name: 'Credit Management Case', categories: ['Blocked Order', 'Limit Review', 'Exposure', 'Score', 'Release'], area: 'Order to Cash' },
+      dispute_management_cases: { prefix: 'FSCM-DSP', name: 'Dispute Management Case', categories: ['Deduction', 'Short Pay', 'Chargeback', 'Reason Code', 'Resolution'], area: 'Order to Cash' },
+      collections_worklists: { prefix: 'FSCM-COL', name: 'Collections Worklist', categories: ['Worklist', 'Promise to Pay', 'Dunning', 'Aging', 'Escalation'], area: 'Order to Cash' },
+      cash_application_items: { prefix: 'FSCM-CASH', name: 'Cash Application Item', categories: ['Lockbox', 'Remittance', 'Matching', 'Exception', 'Clearing'], area: 'Order to Cash' },
+      integration_suite_flows: { prefix: 'CPI-IFLOW', name: 'Integration Flow', categories: ['iFlow', 'Mapping', 'Adapter', 'Message', 'Exception'], area: 'Governance' },
+      btp_subaccounts: { prefix: 'BTP-SUB', name: 'BTP Subaccount', categories: ['Subaccount', 'Entitlement', 'Destination', 'Service', 'Space'], area: 'Governance' },
+      event_mesh_topics: { prefix: 'EVT-MESH', name: 'Event Mesh Topic', categories: ['Topic', 'Queue', 'Subscription', 'Event Type', 'Delivery'], area: 'Governance' },
+      api_management_products: { prefix: 'API-PROD', name: 'API Management Product', categories: ['API Product', 'Proxy', 'Policy', 'Subscription', 'Analytics'], area: 'Governance' },
+      ilm_retention_policies: { prefix: 'ILM-POL', name: 'ILM Retention Policy', categories: ['Retention', 'Legal Hold', 'Destruction', 'Archive', 'Audit'], area: 'Governance' },
+      document_management_files: { prefix: 'DMS-DIR', name: 'Document Management File', categories: ['DIR', 'Attachment', 'Version', 'Object Link', 'Release'], area: 'Governance' },
+      variant_config_models: { prefix: 'VC-MODEL', name: 'Variant Configuration Model', categories: ['Characteristic', 'Class', 'Dependency', 'Constraint', 'Variant Price'], area: 'Design to Operate' },
+      product_compliance_specs: { prefix: 'PC-SPEC', name: 'Product Compliance Spec', categories: ['Specification', 'Dangerous Goods', 'Declaration', 'Marketability', 'Safety'], area: 'Design to Operate' },
+      service_management_orders: { prefix: 'SVC-ORD', name: 'Service Management Order', categories: ['Service Order', 'Warranty', 'Confirmation', 'Entitlement', 'Billing'], area: 'Design to Operate' },
+      field_service_assignments: { prefix: 'FSM-ASG', name: 'Field Service Assignment', categories: ['Dispatch', 'Technician', 'Mobile', 'Parts', 'Completion'], area: 'Design to Operate' },
+      customer_identity_profiles: { prefix: 'CDC-ID', name: 'Customer Identity Profile', categories: ['Identity', 'Consent', 'Profile', 'Provider', 'Privacy'], area: 'Lead to Cash' },
+      customer_data_segments: { prefix: 'CDP-SEG', name: 'Customer Data Segment', categories: ['Audience', 'Trait', 'Event', 'Activation', 'Destination'], area: 'Lead to Cash' },
+      industry_utilities_devices: { prefix: 'ISU-DEV', name: 'Utilities Device', categories: ['Device', 'Meter Reading', 'Installation', 'Service Point', 'Exception'], area: 'Industry Cloud' },
+      industry_utilities_billing: { prefix: 'ISU-BILL', name: 'Utilities Billing Item', categories: ['Billing', 'Rate', 'Consumption', 'Invoice', 'Print'], area: 'Industry Cloud' },
+      industry_retail_assortments: { prefix: 'RTL-AST', name: 'Retail Assortment', categories: ['Assortment', 'Site', 'Merchandise', 'Listing', 'Availability'], area: 'Industry Cloud' },
+      industry_retail_promotions: { prefix: 'RTL-PROMO', name: 'Retail Promotion', categories: ['Promotion', 'Offer', 'Markdown', 'Campaign', 'Uplift'], area: 'Industry Cloud' },
+      industry_oil_gas_nominations: { prefix: 'OIL-NOM', name: 'Oil & Gas Nomination', categories: ['Nomination', 'Ticket', 'Exchange', 'Balancing', 'Settlement'], area: 'Industry Cloud' },
+      industry_banking_loans: { prefix: 'BNK-LOAN', name: 'Banking Loan', categories: ['Loan', 'Facility', 'Collateral', 'Risk', 'Servicing'], area: 'Industry Cloud' },
+      industry_insurance_claims: { prefix: 'INS-CLM', name: 'Insurance Claim', categories: ['Claim', 'Policy', 'Reserve', 'Adjudication', 'Settlement'], area: 'Industry Cloud' },
+      industry_public_sector_grants: { prefix: 'PSM-GRANT', name: 'Public Sector Grant', categories: ['Grant', 'Fund', 'Sponsor', 'Obligation', 'Compliance'], area: 'Industry Cloud' },
+      industry_healthcare_cases: { prefix: 'HC-CASE', name: 'Healthcare Case', categories: ['Case', 'Service', 'Authorization', 'Billing', 'Outcome'], area: 'Industry Cloud' },
+      industry_higher_ed_students: { prefix: 'HER-STU', name: 'Higher Ed Student', categories: ['Student', 'Program', 'Enrollment', 'Fees', 'Academic Status'], area: 'Industry Cloud' },
+      industry_defense_contracts: { prefix: 'DEF-CTR', name: 'Defense Contract', categories: ['Contract', 'Program', 'Deliverable', 'Funding', 'Compliance'], area: 'Industry Cloud' },
+      industry_aerospace_programs: { prefix: 'AERO-PGM', name: 'Aerospace Program', categories: ['Program', 'Work Package', 'Engineering Gate', 'Delivery', 'Readiness'], area: 'Industry Cloud' },
+      sustainability_esg_metrics: { prefix: 'ESG-MET', name: 'Sustainability Metric', categories: ['Emissions', 'Energy', 'Water', 'Waste', 'Target'], area: 'Governance' },
+      green_ledger_entries: { prefix: 'GLGRN', name: 'Green Ledger Entry', categories: ['Carbon Entry', 'Emission Factor', 'Allocation', 'Assurance', 'Disclosure'], area: 'Record to Report' },
+      signavio_process_models: { prefix: 'SGN-MDL', name: 'Signavio Process Model', categories: ['Process Model', 'Variant', 'Owner', 'Lifecycle', 'Transformation'], area: 'Governance' },
+      process_mining_cases: { prefix: 'MIN-CASE', name: 'Process Mining Case', categories: ['Bottleneck', 'Conformance', 'Automation', 'Variant', 'Value'], area: 'Governance' },
+      cloud_alm_projects: { prefix: 'CALM-PRJ', name: 'Cloud ALM Project', categories: ['Implementation', 'Task', 'Deliverable', 'Deployment', 'Readiness'], area: 'Governance' },
+      cloud_alm_operations: { prefix: 'CALM-OPS', name: 'Cloud ALM Operation', categories: ['Alert', 'Health', 'Exception', 'Integration', 'Operations'], area: 'Governance' },
+      solution_manager_changes: { prefix: 'SOLMAN-CHG', name: 'Solution Manager Change', categories: ['Change', 'Transport', 'Approval', 'Retrofit', 'Release'], area: 'Governance' },
+      solution_manager_test_plans: { prefix: 'SOLMAN-TST', name: 'Solution Manager Test Plan', categories: ['Test Plan', 'Script', 'Defect', 'Cycle', 'Evidence'], area: 'Governance' },
+      leanix_applications: { prefix: 'LEANIX-APP', name: 'LeanIX Application', categories: ['Application', 'Capability', 'Lifecycle', 'Risk', 'Transformation'], area: 'Governance' },
+      walkme_guidance: { prefix: 'WALKME', name: 'WalkMe Guidance Flow', categories: ['Guidance', 'Flow', 'Adoption', 'Friction', 'Completion'], area: 'Governance' },
+      joule_skills: { prefix: 'JOULE', name: 'Joule Skill', categories: ['Skill', 'Prompt', 'Grounding', 'Action', 'Agent'], area: 'Governance' },
+      ai_core_deployments: { prefix: 'AICORE', name: 'AI Core Deployment', categories: ['Scenario', 'Deployment', 'Pipeline', 'Endpoint', 'Runtime'], area: 'Governance' },
+      build_apps_projects: { prefix: 'BUILD-APP', name: 'Build Apps Project', categories: ['App', 'Data Resource', 'Release', 'Citizen Dev', 'Mobile'], area: 'Governance' },
+      build_process_automations: { prefix: 'BUILD-BPA', name: 'Build Process Automation', categories: ['Workflow', 'Decision', 'Bot', 'Form', 'Run'], area: 'Governance' },
+      build_work_zone_sites: { prefix: 'BUILD-WZ', name: 'Build Work Zone Site', categories: ['Site', 'Page', 'Role', 'Content', 'Adoption'], area: 'Governance' },
+      identity_authentication_apps: { prefix: 'IAS-APP', name: 'Identity Authentication App', categories: ['Application', 'Trust', 'Policy', 'Provider', 'Login'], area: 'Governance' },
+      identity_provisioning_jobs: { prefix: 'IPS-JOB', name: 'Identity Provisioning Job', categories: ['Source', 'Target', 'Transformation', 'Job', 'Error'], area: 'Governance' },
+      btp_abap_environments: { prefix: 'BTP-ABAP', name: 'BTP ABAP Environment', categories: ['ABAP System', 'Component', 'Service', 'Extension', 'Transport'], area: 'Governance' },
+      btp_kyma_workloads: { prefix: 'BTP-KYMA', name: 'BTP Kyma Workload', categories: ['Workload', 'Service', 'Event', 'Function', 'Health'], area: 'Governance' },
+      cap_services: { prefix: 'CAP-SRV', name: 'CAP Service', categories: ['Service', 'Entity', 'Deployment', 'API', 'Handler'], area: 'Governance' },
+      hana_cloud_databases: { prefix: 'HANA-DB', name: 'HANA Cloud Database', categories: ['Database', 'Schema', 'Memory', 'Workload', 'Backup'], area: 'Governance' },
+      bw4hana_queries: { prefix: 'BW4-QRY', name: 'BW/4HANA Query', categories: ['Query', 'InfoProvider', 'Transformation', 'Process Chain', 'Usage'], area: 'Record to Report' },
+      data_intelligence_pipelines: { prefix: 'DI-PIPE', name: 'Data Intelligence Pipeline', categories: ['Pipeline', 'Operator', 'Connection', 'Schedule', 'Execution'], area: 'Governance' },
+      successfactors_employee_central: { prefix: 'SF-EC', name: 'Employee Central Record', categories: ['Employee', 'Job Info', 'Event', 'Position', 'Effective Date'], area: 'Hire to Retire' },
+      successfactors_learning: { prefix: 'SF-LMS', name: 'SuccessFactors Learning Item', categories: ['Item', 'Curriculum', 'Assignment', 'Completion', 'Compliance'], area: 'Hire to Retire' },
+      successfactors_goals: { prefix: 'SF-GOAL', name: 'SuccessFactors Goal', categories: ['Goal', 'Objective', 'Calibration', 'Rating', 'Review'], area: 'Hire to Retire' },
+      successfactors_workforce_analytics: { prefix: 'SF-WFA', name: 'Workforce Analytics Metric', categories: ['Headcount', 'Turnover', 'Diversity', 'Forecast', 'Benchmark'], area: 'Hire to Retire' },
+      sales_cloud_opportunities: { prefix: 'C4C-OPP', name: 'Sales Cloud Opportunity', categories: ['Opportunity', 'Activity', 'Account Plan', 'Forecast', 'Pipeline'], area: 'Lead to Cash' },
+      service_cloud_cases: { prefix: 'C4C-CASE', name: 'Service Cloud Case', categories: ['Case', 'Ticket', 'Entitlement', 'Routing', 'SLA'], area: 'Lead to Cash' },
+      cpq_quotes: { prefix: 'CPQ', name: 'SAP CPQ Quote', categories: ['Quote', 'Configuration', 'Approval', 'Pricing', 'Proposal'], area: 'Lead to Cash' },
+      emarsys_campaigns: { prefix: 'EMARSYS', name: 'Emarsys Campaign', categories: ['Campaign', 'Segment', 'Email', 'Personalization', 'Conversion'], area: 'Lead to Cash' },
+      customer_checkout_pos: { prefix: 'CCO-POS', name: 'Customer Checkout POS', categories: ['POS', 'Till', 'Receipt', 'Payment', 'Sync'], area: 'Lead to Cash' },
+      digital_payments: { prefix: 'DIGPAY', name: 'Digital Payment', categories: ['Payment', 'Provider', 'Token', 'Authorization', 'Settlement'], area: 'Lead to Cash' },
+      digital_manufacturing_orders: { prefix: 'DMC-ORD', name: 'Digital Manufacturing Order', categories: ['Order', 'Operation', 'Shop Floor', 'Yield', 'Exception'], area: 'Design to Operate' },
+      manufacturing_execution_operations: { prefix: 'MES-OP', name: 'MES Operation', categories: ['Operation', 'Labor', 'Machine', 'Quality Gate', 'Confirmation'], area: 'Design to Operate' },
+      manufacturing_insights: { prefix: 'MFG-INS', name: 'Manufacturing Insight', categories: ['OEE', 'Downtime', 'Scrap', 'Throughput', 'Analytics'], area: 'Design to Operate' },
+      asset_performance_models: { prefix: 'APM-MDL', name: 'Asset Performance Model', categories: ['Model', 'Indicator', 'Risk', 'Recommendation', 'Alert'], area: 'Design to Operate' },
+      asset_network_collaboration: { prefix: 'AIC-NET', name: 'Asset Network Collaboration', categories: ['Equipment', 'Document', 'Partner', 'Collaboration', 'Model'], area: 'Design to Operate' },
+      yard_logistics_appointments: { prefix: 'YL-APT', name: 'Yard Logistics Appointment', categories: ['Appointment', 'Door', 'Check In', 'Yard Move', 'Loading'], area: 'Order to Cash' },
+      logistics_business_network_shipments: { prefix: 'LBN-SHP', name: 'Logistics Network Shipment', categories: ['Shipment', 'Tracking', 'Carrier', 'Milestone', 'Exception'], area: 'Order to Cash' },
+      advanced_financial_close_tasks: { prefix: 'AFC-TASK', name: 'Advanced Financial Close Task', categories: ['Close Task', 'Dependency', 'Approval', 'Cockpit', 'Exception'], area: 'Record to Report' },
+      revenue_accounting_contracts: { prefix: 'RAR-CTR', name: 'Revenue Accounting Contract', categories: ['Contract', 'Obligation', 'Allocation', 'Recognition', 'Posting'], area: 'Record to Report' },
+      profitability_performance_models: { prefix: 'PAPM-MDL', name: 'PaPM Model', categories: ['Model', 'Function', 'Allocation', 'Simulation', 'Result'], area: 'Record to Report' },
+      document_reporting_compliance: { prefix: 'DRC', name: 'Document Compliance Record', categories: ['E-Document', 'Statutory Report', 'Submission', 'Validation', 'Response'], area: 'Record to Report' },
+      contract_accounts_receivable_payable: { prefix: 'FI-CA', name: 'Contract AR/AP Item', categories: ['Contract Account', 'Open Item', 'Clearing', 'Dunning', 'Payment'], area: 'Record to Report' },
+      funds_management_budget: { prefix: 'FM-BUD', name: 'Funds Management Budget', categories: ['Budget', 'Commitment', 'Availability', 'Consumption', 'Fund'], area: 'Record to Report' },
+      joint_venture_accounting: { prefix: 'JVA', name: 'Joint Venture Accounting Item', categories: ['Venture', 'Equity Group', 'Billing', 'Cutback', 'Settlement'], area: 'Record to Report' },
+      commodity_management_deals: { prefix: 'CMDTY', name: 'Commodity Management Deal', categories: ['Deal', 'Exposure', 'Derivative', 'Pricing', 'Risk'], area: 'Record to Report' },
+      trade_promotion_management: { prefix: 'TPM', name: 'Trade Promotion', categories: ['Promotion', 'Fund', 'Claim', 'Deduction', 'Settlement'], area: 'Lead to Cash' },
+      sales_performance_management: { prefix: 'SPM', name: 'Sales Performance Plan', categories: ['Incentive', 'Commission', 'Crediting', 'Payout', 'Dispute'], area: 'Lead to Cash' },
+      territory_quota_plans: { prefix: 'TQP', name: 'Territory Quota Plan', categories: ['Territory', 'Quota', 'Assignment', 'Capacity', 'Coverage'], area: 'Lead to Cash' },
+      enterprise_portfolio_initiatives: { prefix: 'EPPM', name: 'Enterprise Portfolio Initiative', categories: ['Initiative', 'Investment', 'Dependency', 'Benefit', 'Risk'], area: 'Governance' },
+      innovation_management_ideas: { prefix: 'INNO', name: 'Innovation Management Idea', categories: ['Idea', 'Campaign', 'Review', 'Score', 'Conversion'], area: 'Governance' },
+      sourcing_supplier_network: { prefix: 'BN-SUP', name: 'Supplier Network Record', categories: ['Supplier', 'Onboarding', 'Collaboration', 'Profile', 'Transaction'], area: 'Procure to Pay' },
+      supplier_risk_assessments: { prefix: 'SUP-RISK', name: 'Supplier Risk Assessment', categories: ['Risk', 'Incident', 'Rating', 'Alert', 'Mitigation'], area: 'Procure to Pay' },
+      quality_issue_resolution: { prefix: 'QIR', name: 'Quality Issue Resolution', categories: ['Issue', 'Containment', 'Root Cause', 'Corrective Action', 'Verification'], area: 'Design to Operate' },
+      audit_management_plans: { prefix: 'AUDIT', name: 'Audit Management Plan', categories: ['Audit Plan', 'Workpaper', 'Finding', 'Action', 'Sign Off'], area: 'Governance' },
+      environment_management_permits: { prefix: 'ENV-PER', name: 'Environment Management Permit', categories: ['Permit', 'Limit', 'Monitoring', 'Exceedance', 'Compliance'], area: 'Governance' },
+      waste_management_records: { prefix: 'WASTE', name: 'Waste Management Record', categories: ['Manifest', 'Disposal', 'Transporter', 'Recycling', 'Regulatory'], area: 'Governance' },
+      mobile_start_cards: { prefix: 'MSTART', name: 'Mobile Start Card', categories: ['Card', 'Launch Target', 'Role', 'Usage', 'Task'], area: 'Governance' },
+      fiori_launchpad_spaces: { prefix: 'FLP', name: 'Fiori Launchpad Space', categories: ['Space', 'Page', 'Catalog', 'Role', 'Tile'], area: 'Governance' },
+      enable_now_content: { prefix: 'SEN', name: 'Enable Now Content', categories: ['Simulation', 'Document', 'Learning', 'Publishing', 'Usage'], area: 'Governance' },
+      business_network_assets: { prefix: 'BN-AST', name: 'Business Network Asset', categories: ['Asset', 'Operator', 'Document', 'Maintenance', 'Sharing'], area: 'Design to Operate' },
+      business_network_material_traceability: { prefix: 'BN-MAT', name: 'Material Traceability Record', categories: ['Batch', 'Provenance', 'Event', 'Genealogy', 'Recall'], area: 'Design to Operate' },
+    };
+    const owners = ['Marcus Hoffmann', 'Nina Schmidt', 'Carlos Santos', 'Felix Wagner', 'Raj Patel'];
+    const statuses = ['Active', 'In Review', 'Approved', 'Completed', 'Blocked'];
+    for (const [table, cfg] of Object.entries(extendedSapSeeds)) {
+      await ins(
+        table,
+        ['code', 'name', 'category', 'process_area', 'owner', 'amount', 'currency', 'start_date', 'end_date', 'status', 'notes'],
+        Array.from({ length: 15 }, (_, i) => {
+          const n = i + 1;
+          return [
+            `${cfg.prefix}-2026-${String(n).padStart(3, '0')}`,
+            `${cfg.name} ${String(n).padStart(2, '0')}`,
+            cfg.categories[i % cfg.categories.length],
+            cfg.area,
+            owners[i % owners.length],
+            25000 + n * 17500,
+            i % 3 === 0 ? 'USD' : 'EUR',
+            `2026-${String((i % 12) + 1).padStart(2, '0')}-01`,
+            `2026-${String((i % 12) + 1).padStart(2, '0')}-28`,
+            statuses[i % statuses.length],
+            `${cfg.name} sample record for ${cfg.area} process coverage`,
+          ];
+        })
+      );
+    }
+    console.log('Extended SAP modules seeded');
 
     console.log('Ariba/HCM/Concur/IBP data seeded');
 

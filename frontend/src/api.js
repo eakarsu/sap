@@ -315,3 +315,141 @@ export const sapEntityMapping = (body) =>
   request(`${API}/sap/entity-mapping`, { method: 'POST', body: JSON.stringify(body || {}) });
 export const aiStudioPromptDesign = (body) =>
   request(`${API}/ai/studio-prompt-design`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP enterprise controls
+export const fetchSapControlsOverview = () =>
+  request(`${API}/sap-controls/overview`);
+export const fetchSapSecurity = () =>
+  request(`${API}/sap-controls/security`);
+export const evaluateReleaseStrategy = (body) =>
+  request(`${API}/sap-controls/release-strategy/evaluate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const fetchReleaseStrategyEvents = () =>
+  request(`${API}/sap-controls/release-strategy/events`);
+export const createMdgRequest = (body) =>
+  request(`${API}/sap-controls/mdg/request`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const fetchMdgRequests = () =>
+  request(`${API}/sap-controls/mdg/requests`);
+export const fetchSapDocumentChain = (orderNumber) =>
+  request(`${API}/sap-controls/document-chain/${encodeURIComponent(orderNumber)}`);
+export const simulateSapPosting = (body) =>
+  request(`${API}/sap-controls/posting/simulate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const fetchSapPostings = () =>
+  request(`${API}/sap-controls/posting/documents`);
+export const fetchSapIntegrationMonitor = () =>
+  request(`${API}/sap-controls/integration-monitor`);
+export const fetchSapPeriodClose = () =>
+  request(`${API}/sap-controls/period-close`);
+
+// SAP cross-module process hub
+export const fetchSapProcessOverview = () =>
+  request(`${API}/sap-process/overview`);
+export const runOrderToCash = (body) =>
+  request(`${API}/sap-process/order-to-cash`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runProcureToPay = (body) =>
+  request(`${API}/sap-process/procure-to-pay`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runAtpCheck = (body) =>
+  request(`${API}/sap-process/atp-check`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runPayrollCalculate = (body) =>
+  request(`${API}/sap-process/payroll-calculate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runTaxValidate = (body) =>
+  request(`${API}/sap-process/tax-validate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runEwmWavePlan = (body) =>
+  request(`${API}/sap-process/ewm-wave-plan`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runTmRoutePlan = (body) =>
+  request(`${API}/sap-process/tm-route-plan`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runRoleAccessCheck = (body) =>
+  request(`${API}/sap-process/role-access-check`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runMrp = (body) =>
+  request(`${API}/sap-process/mrp-run`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runProductionConfirmation = (body) =>
+  request(`${API}/sap-process/production-confirmation`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runBankReconciliation = (body) =>
+  request(`${API}/sap-process/bank-reconciliation`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runDunning = (body) =>
+  request(`${API}/sap-process/dunning-run`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runAssetDepreciation = (body) =>
+  request(`${API}/sap-process/asset-depreciation`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runRevenueRecognition = (body) =>
+  request(`${API}/sap-process/revenue-recognition`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runIntercompanyElimination = (body) =>
+  request(`${API}/sap-process/intercompany-elimination`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runMdgDuplicateCheck = (body) =>
+  request(`${API}/sap-process/mdg-duplicate-check`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP configuration, integration, workflow, and localization hub
+export const fetchSapConfigOverview = () =>
+  request(`${API}/sap-config/overview`);
+export const saveSapConfigProfile = (body) =>
+  request(`${API}/sap-config/profiles`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const saveSapWorkflowRule = (body) =>
+  request(`${API}/sap-config/workflow-rules`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const reprocessSapIntegration = (id) =>
+  request(`${API}/sap-config/integration-channels/${id}/reprocess`, { method: 'POST' });
+export const saveSapLocalizationPack = (body) =>
+  request(`${API}/sap-config/localization-packs`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP workflow inbox, substitution, escalation, and audit
+export const fetchSapWorkflowOverview = () =>
+  request(`${API}/sap-workflow/overview`);
+export const createSapWorkflowTask = (body) =>
+  request(`${API}/sap-workflow/tasks`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const actOnSapWorkflowTask = (id, body) =>
+  request(`${API}/sap-workflow/tasks/${id}/action`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const createSapWorkflowDelegation = (body) =>
+  request(`${API}/sap-workflow/delegations`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const escalateSapOverdueWorkflow = () =>
+  request(`${API}/sap-workflow/escalate-overdue`, { method: 'POST' });
+
+// SAP authorization center
+export const fetchSapAuthOverview = () =>
+  request(`${API}/sap-auth/overview`);
+export const saveSapAuthRole = (body) =>
+  request(`${API}/sap-auth/roles`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const assignSapAuthRole = (body) =>
+  request(`${API}/sap-auth/assignments`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const simulateSapAccess = (body) =>
+  request(`${API}/sap-auth/simulate`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP FI/CO finance ledger
+export const fetchSapFinanceOverview = () =>
+  request(`${API}/sap-finance/overview`);
+export const postSapJournal = (body) =>
+  request(`${API}/sap-finance/journal`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const updateSapFiscalPeriod = (id, body) =>
+  request(`${API}/sap-finance/periods/${id}/status`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const saveSapGlAccount = (body) =>
+  request(`${API}/sap-finance/accounts`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP PP production planning and costing
+export const fetchSapProductionOverview = () =>
+  request(`${API}/sap-production/overview`);
+export const explodeSapBom = (materialNumber, lotSize = 1) =>
+  request(`${API}/sap-production/bom/${encodeURIComponent(materialNumber)}/explosion?lotSize=${encodeURIComponent(lotSize)}`);
+export const runSapCostRollup = (body) =>
+  request(`${API}/sap-production/cost-rollup`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const runSapCapacityCheck = (body) =>
+  request(`${API}/sap-production/capacity-check`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const addSapBomItem = (body) =>
+  request(`${API}/sap-production/bom-items`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP SD pricing and billing
+export const fetchSapSdOverview = () =>
+  request(`${API}/sap-sd/overview`);
+export const simulateSapPricing = (body) =>
+  request(`${API}/sap-sd/price-simulate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const simulateSapBilling = (body) =>
+  request(`${API}/sap-sd/billing-simulate`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const saveSapConditionRecord = (body) =>
+  request(`${API}/sap-sd/conditions`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const saveSapTaxRule = (body) =>
+  request(`${API}/sap-sd/tax-rules`, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// SAP MM inventory and warehouse execution
+export const fetchSapInventoryOverview = () =>
+  request(`${API}/sap-inventory/overview`);
+export const postSapGoodsMovement = (body) =>
+  request(`${API}/sap-inventory/movement`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const createSapReservation = (body) =>
+  request(`${API}/sap-inventory/reservations`, { method: 'POST', body: JSON.stringify(body || {}) });
+export const createSapCycleCount = (body) =>
+  request(`${API}/sap-inventory/cycle-count`, { method: 'POST', body: JSON.stringify(body || {}) });

@@ -14,10 +14,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3000,
+    port: Number(process.env.FRONTEND_PORT || 3001),
     proxy: {
       '/api': {
-        target: process.env.BACKEND_URL || 'http://localhost:4002',
+        target: process.env.BACKEND_URL || `http://localhost:${process.env.BACKEND_PORT || 4002}`,
         changeOrigin: true,
       },
     },

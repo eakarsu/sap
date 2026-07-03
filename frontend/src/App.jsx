@@ -22,8 +22,17 @@ import Reports from './pages/Reports';
 import Calendar from './pages/Calendar';
 import Approvals from './pages/Approvals';
 import ApprovalExposure from './pages/ApprovalExposure';
+import SAPControls from './pages/SAPControls';
+import SAPProcessHub from './pages/SAPProcessHub';
+import SAPConfigurationHub from './pages/SAPConfigurationHub';
+import SAPWorkflowInbox from './pages/SAPWorkflowInbox';
+import SAPAuthorizationCenter from './pages/SAPAuthorizationCenter';
+import SAPFinanceLedger from './pages/SAPFinanceLedger';
+import SAPProductionPlanning from './pages/SAPProductionPlanning';
+import SAPSalesDistribution from './pages/SAPSalesDistribution';
+import SAPInventoryWarehouse from './pages/SAPInventoryWarehouse';
 import { callAI } from './api';
-import { FiGrid, FiCpu, FiLogOut, FiMenu, FiX, FiChevronDown, FiChevronRight, FiUser, FiSearch, FiSettings, FiBarChart2, FiCalendar, FiCheckSquare } from 'react-icons/fi';
+import { FiGrid, FiCpu, FiLogOut, FiMenu, FiX, FiChevronDown, FiChevronRight, FiUser, FiSearch, FiSettings, FiBarChart2, FiCalendar, FiCheckSquare, FiShield, FiGitBranch } from 'react-icons/fi';
 
 import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
 import CodexOperationsFeature from './pages/CodexOperationsFeature';
@@ -274,6 +283,42 @@ function Layout({ user, onLogout, children }) {
               <FiCheckSquare size={18} />
               <span>Approval Exposure</span>
             </Link>
+            <Link to="/sap-controls" className={`sidebar-item ${isActive('/sap-controls') ? 'active' : ''}`}>
+              <FiShield size={18} />
+              <span>SAP Controls</span>
+            </Link>
+            <Link to="/sap-process-hub" className={`sidebar-item ${isActive('/sap-process-hub') ? 'active' : ''}`}>
+              <FiGitBranch size={18} />
+              <span>SAP Process Hub</span>
+            </Link>
+            <Link to="/sap-configuration" className={`sidebar-item ${isActive('/sap-configuration') ? 'active' : ''}`}>
+              <FiSettings size={18} />
+              <span>SAP Configuration</span>
+            </Link>
+            <Link to="/sap-workflow" className={`sidebar-item ${isActive('/sap-workflow') ? 'active' : ''}`}>
+              <FiCheckSquare size={18} />
+              <span>SAP Workflow Inbox</span>
+            </Link>
+            <Link to="/sap-authorization" className={`sidebar-item ${isActive('/sap-authorization') ? 'active' : ''}`}>
+              <FiShield size={18} />
+              <span>SAP Authorization</span>
+            </Link>
+            <Link to="/sap-finance-ledger" className={`sidebar-item ${isActive('/sap-finance-ledger') ? 'active' : ''}`}>
+              <FiBarChart2 size={18} />
+              <span>SAP Finance Ledger</span>
+            </Link>
+            <Link to="/sap-production-planning" className={`sidebar-item ${isActive('/sap-production-planning') ? 'active' : ''}`}>
+              <FiGitBranch size={18} />
+              <span>SAP Production Planning</span>
+            </Link>
+            <Link to="/sap-sales-distribution" className={`sidebar-item ${isActive('/sap-sales-distribution') ? 'active' : ''}`}>
+              <FiBarChart2 size={18} />
+              <span>SAP SD Pricing</span>
+            </Link>
+            <Link to="/sap-inventory-warehouse" className={`sidebar-item ${isActive('/sap-inventory-warehouse') ? 'active' : ''}`}>
+              <FiGrid size={18} />
+              <span>SAP Inventory</span>
+            </Link>
             <Link to="/custom-views" className={`sidebar-item ${isActive('/custom-views') ? 'active' : ''}`}>
               <FiGrid size={18} />
               <span>SAP Views</span>
@@ -350,6 +395,15 @@ export default function App() {
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/approval-exposure" element={<ApprovalExposure />} />
+        <Route path="/sap-controls" element={<SAPControls />} />
+        <Route path="/sap-process-hub" element={<SAPProcessHub />} />
+        <Route path="/sap-configuration" element={<SAPConfigurationHub />} />
+        <Route path="/sap-workflow" element={<SAPWorkflowInbox />} />
+        <Route path="/sap-authorization" element={<SAPAuthorizationCenter />} />
+        <Route path="/sap-finance-ledger" element={<SAPFinanceLedger />} />
+        <Route path="/sap-production-planning" element={<SAPProductionPlanning />} />
+        <Route path="/sap-sales-distribution" element={<SAPSalesDistribution />} />
+        <Route path="/sap-inventory-warehouse" element={<SAPInventoryWarehouse />} />
         <Route path="/custom-views" element={<CustomViewsPage />} />
         <Route path="/:moduleKey" element={<ModulePage />} />
         <Route path="/:moduleKey/:id" element={<DetailPage />} />

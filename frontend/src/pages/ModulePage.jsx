@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { modules } from '../modules';
+import { modules, sidebarGroups } from '../modules';
 import { fetchAll, createItem, fetchOne, updateItem, deleteItem, callAI, classifyTicket } from '../api';
-import { FiSearch, FiX, FiPlus, FiRefreshCw, FiEdit2, FiTrash2, FiSave, FiCpu, FiAlertCircle, FiMail, FiCopy, FiTag } from 'react-icons/fi';
+import { FiSearch, FiX, FiPlus, FiRefreshCw, FiEdit2, FiTrash2, FiSave, FiCpu, FiAlertCircle, FiMail, FiCopy, FiTag, FiShield, FiCheckCircle, FiList, FiGitBranch, FiUsers } from 'react-icons/fi';
 import ModuleCharts from './ModuleCharts';
 import WorkflowActions from './WorkflowActions';
 import RelatedRecords from './RelatedRecords';
@@ -162,6 +162,109 @@ function formatValue(val, format) {
   return String(val);
 }
 
+function titleizeKey(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeAiContent(content) {
+  if (content == null) return '';
+  if (typeof content !== 'string') return content;
+  const cleaned = content
+    .replace(/```(?:json|markdown)?/gi, '')
+    .replace(/```/g, '')
+    .trim();
+  if (/^[\[{]/.test(cleaned)) {
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      return cleaned;
+    }
+  }
+  return cleaned;
+}
+
+function renderStructuredAi(value, depth = 0) {
+  if (value == null || value === '') return <span style={{ color:'#6A767D' }}>Not provided</span>;
+  if (typeof value !== 'object') return <span>{String(value)}</span>;
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <span style={{ color:'#6A767D' }}>No items found.</span>;
+    return (
+      <div style={{ display:'grid', gap:8 }}>
+        {value.map((item, idx) => (
+          <div key={idx} style={{ padding:'10px 12px', background:'#fff', border:'1px solid #E8EBF0', borderRadius:6 }}>
+            {typeof item === 'object' && item !== null ? renderStructuredAi(item, depth + 1) : (
+              <div style={{ fontSize:13, color:'#354A5F', lineHeight:1.55 }}>{String(item)}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return (
+    <div style={{ display:'grid', gap: depth ? 6 : 10 }}>
+      {Object.entries(value).map(([key, val]) => (
+        <div key={key} style={{ display:'grid', gap:4 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:'#6A767D', textTransform:'uppercase', letterSpacing:'0.3px' }}>
+            {titleizeKey(key)}
+          </div>
+          <div style={{ fontSize:13, color:'#1D2D3E', lineHeight:1.55 }}>
+            {renderStructuredAi(val, depth + 1)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ProfessionalAiOutput({ content }) {
+  const normalized = normalizeAiContent(content);
+  if (typeof normalized !== 'string') {
+    return <div>{renderStructuredAi(normalized)}</div>;
+  }
+
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  return (
+    <div style={{ display:'grid', gap:8 }}>
+      {lines.map((line, idx) => {
+        const heading = line.match(/^#{1,4}\s+(.+)$/) || line.match(/^\*\*(.+?)\*\*:?\s*$/);
+        if (heading) {
+          return (
+            <div key={idx} style={{ fontSize:14, fontWeight:700, color:'#1D2D3E', marginTop: idx ? 6 : 0 }}>
+              {heading[1]}
+            </div>
+          );
+        }
+        const bullet = line.match(/^[-*]\s+(.+)$/) || line.match(/^\d+\.\s+(.+)$/);
+        if (bullet) {
+          return (
+            <div key={idx} style={{ display:'flex', gap:8, fontSize:13, color:'#354A5F', lineHeight:1.55 }}>
+              <span style={{ color:'#0070F2', fontWeight:700 }}>•</span>
+              <span>{bullet[1].replace(/\*\*/g, '')}</span>
+            </div>
+          );
+        }
+        const keyVal = line.match(/^([A-Za-z][A-Za-z0-9 _/-]{2,40}):\s*(.+)$/);
+        if (keyVal) {
+          return (
+            <div key={idx} style={{ padding:'9px 11px', background:'#fff', border:'1px solid #E8EBF0', borderRadius:6 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'#6A767D', textTransform:'uppercase', letterSpacing:'0.3px' }}>{keyVal[1]}</div>
+              <div style={{ fontSize:13, color:'#1D2D3E', lineHeight:1.55, marginTop:3 }}>{keyVal[2].replace(/\*\*/g, '')}</div>
+            </div>
+          );
+        }
+        return (
+          <div key={idx} style={{ fontSize:13, color:'#354A5F', lineHeight:1.6 }}>
+            {line.replace(/\*\*/g, '')}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function getSamplePrompts(moduleKey) {
   const samples = {
     accounts: [
@@ -213,6 +316,26 @@ function getSamplePrompts(moduleKey) {
   return samples[moduleKey] || defaults;
 }
 
+function getModuleGroupLabel(moduleKey) {
+  return sidebarGroups.find((group) => group.items.includes(moduleKey))?.label || '';
+}
+
+function getModuleContext(moduleKey) {
+  const group = getModuleGroupLabel(moduleKey).toLowerCase();
+  const key = String(moduleKey || '').toLowerCase();
+  if (group.includes('fi') || group.includes('controlling') || group.includes('treasury') || group.includes('finance') || group.includes('fscm') || key.includes('invoice') || key.includes('payment') || key.includes('ledger') || key.includes('accounting')) return 'finance';
+  if (group.includes('sd') || group.includes('sales') || group.includes('cx') || key.includes('quote') || key.includes('order') || key.includes('billing') || key.includes('delivery') || key.includes('customer')) return 'sales';
+  if (group.includes('mm') || group.includes('warehouse') || group.includes('ewm') || group.includes('supplier') || key.includes('inventory') || key.includes('material') || key.includes('purchase') || key.includes('goods') || key.includes('stock') || key.includes('vendor')) return 'inventory';
+  if (group.includes('pp') || group.includes('manufacturing') || key.includes('production') || key.includes('bom') || key.includes('routing') || key.includes('work_center') || key.includes('mrp')) return 'production';
+  if (group.includes('service') || key.includes('ticket') || key.includes('work_order') || key.includes('sla') || key.includes('case')) return 'service';
+  if (group.includes('hcm') || group.includes('successfactors') || group.includes('payroll') || key.includes('employee') || key.includes('leave') || key.includes('training') || key.includes('recruit')) return 'hr';
+  if (group.includes('grc') || group.includes('basis') || group.includes('identity') || key.includes('access') || key.includes('control') || key.includes('audit') || key.includes('risk')) return 'security';
+  if (group.includes('quality') || key.includes('quality') || key.includes('inspection')) return 'quality';
+  if (group.includes('pm') || key.includes('maintenance') || key.includes('equipment')) return 'maintenance';
+  if (group.includes('project') || key.includes('project') || key.includes('wbs')) return 'project';
+  return 'general';
+}
+
 export default function ModulePage() {
   const { moduleKey } = useParams();
   const navigate = useNavigate();
@@ -235,9 +358,9 @@ export default function ModulePage() {
   // Duplicate detection state
   const [duplicates, setDuplicates] = useState([]);
   const [duplicateChecking, setDuplicateChecking] = useState(false);
-  // AI Summary state
-  const [aiSummary, setAiSummary] = useState('');
-  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  // Record popup AI action state
+  const [aiPanel, setAiPanel] = useState(null);
+  const [aiActionLoading, setAiActionLoading] = useState('');
   // Email Draft state
   const [emailDraft, setEmailDraft] = useState('');
   const [emailDraftLoading, setEmailDraftLoading] = useState(false);
@@ -272,7 +395,8 @@ export default function ModulePage() {
     setSelectedItem(null);
     setEditing(false);
     setEditData({});
-    setAiSummary('');
+    setAiPanel(null);
+    setAiActionLoading('');
     setEmailDraft('');
     setClassifyResult(null);
     loadData();
@@ -344,12 +468,72 @@ export default function ModulePage() {
   };
 
   const handleAiSummary = async () => {
-    setAiSummaryLoading(true);
+    setAiActionLoading('summary');
+    setAiPanel(null);
     try {
       const res = await callAI('record-summary', { module: moduleKey, record: selectedItem, fields: config.fields });
-      setAiSummary(res?.result || 'Unable to generate summary.');
-    } catch { setAiSummary('Error generating summary.'); }
-    setAiSummaryLoading(false);
+      setAiPanel({ title: 'AI Summary', tone: 'purple', content: res?.result || 'Unable to generate summary.' });
+    } catch {
+      setAiPanel({ title: 'AI Summary', tone: 'red', content: 'Error generating summary.' });
+    }
+    setAiActionLoading('');
+  };
+
+  const handleRecordAiAction = async (action, title, purposeInstructions, purposeSections) => {
+    setAiActionLoading(action);
+    setAiPanel(null);
+    try {
+      const res = await callAI('record-action', {
+        module: moduleKey,
+        record: selectedItem,
+        fields: config.fields,
+        action,
+        purposeTitle: title,
+        purposeInstructions,
+        purposeSections,
+      });
+      setAiPanel({ title, tone: 'purple', content: res?.result || `Unable to generate ${title.toLowerCase()}.` });
+    } catch {
+      setAiPanel({ title, tone: 'red', content: `Error generating ${title.toLowerCase()}.` });
+    }
+    setAiActionLoading('');
+  };
+
+  const handlePopupDuplicateCheck = async () => {
+    setAiActionLoading('duplicates');
+    setAiPanel(null);
+    try {
+      const res = await callAI('check-duplicates', { module: moduleKey, data: selectedItem });
+      const found = res?.duplicates || [];
+      setAiPanel({
+        title: 'Duplicate Check',
+        tone: found.length ? 'orange' : 'green',
+        content: found.length
+          ? { summary: `${found.length} possible duplicate record${found.length === 1 ? '' : 's'} found. Review the matches before creating or updating related data.`, possibleDuplicates: found }
+          : 'No likely duplicates were found from the key identity fields on this record.',
+      });
+    } catch {
+      setAiPanel({ title: 'Duplicate Check', tone: 'red', content: 'Error checking duplicates.' });
+    }
+    setAiActionLoading('');
+  };
+
+  const handleApprovalRoute = async () => {
+    setAiActionLoading('approval-route');
+    setAiPanel(null);
+    try {
+      const amount = selectedItem.amount || selectedItem.total || selectedItem.value || selectedItem.net_amount || selectedItem.gross_amount;
+      const region = selectedItem.region || selectedItem.country || selectedItem.sales_region || selectedItem.plant;
+      const res = await callAI('recommend-approver', { module: moduleKey, recordId: selectedItem.id, amount, region });
+      setAiPanel({
+        title: 'Approval Route',
+        tone: 'blue',
+        content: res?.result || res?.recommendations || res || 'Unable to recommend an approval route.',
+      });
+    } catch {
+      setAiPanel({ title: 'Approval Route', tone: 'red', content: 'Error recommending approval route.' });
+    }
+    setAiActionLoading('');
   };
 
   const handleEmailDraft = async () => {
@@ -365,7 +549,8 @@ export default function ModulePage() {
     setSelectedItem(null);
     setEditing(false);
     setEditData({});
-    setAiSummary('');
+    setAiPanel(null);
+    setAiActionLoading('');
     setEmailDraft('');
     setClassifyResult(null);
   };
@@ -412,6 +597,122 @@ export default function ModulePage() {
     : config.name.endsWith('ies')
     ? config.name.slice(0, -3) + 'y'
     : config.name;
+
+  const buildAiAction = (action, label, icon, purposeInstructions, purposeSections) => ({
+    key: action,
+    label,
+    icon,
+    onClick: () => handleRecordAiAction(action, label, purposeInstructions, purposeSections),
+  });
+  const summaryAction = { key: 'summary', label: 'Summary', icon: FiCpu, onClick: handleAiSummary };
+  const emailAction = { key: 'draft-email', label: 'Email', icon: FiMail, onClick: handleEmailDraft };
+  const duplicateAction = { key: 'duplicates', label: 'Duplicates', icon: FiSearch, onClick: handlePopupDuplicateCheck };
+  const approvalAction = { key: 'approval-route', label: 'Approval Route', icon: FiUsers, onClick: handleApprovalRoute };
+  const context = getModuleContext(moduleKey);
+  const contextualAiActions = {
+    sales: [
+      summaryAction,
+      buildAiAction('process-fit', 'Pricing Review', FiRefreshCw, 'Review SD pricing, discounts, tax, copy-control, billing readiness, and margin exposure for this sales record.', 'Pricing Findings, Billing Readiness, Margin or Credit Concerns, Recommended Corrections'),
+      buildAiAction('risk-review', 'Credit Risk', FiShield, 'Assess customer credit, delivery, collection, and commercial risk for this sales or customer-facing record.', 'Credit Risk, Delivery or Billing Blocks, Collection Exposure, Mitigation Plan'),
+      buildAiAction('next-actions', 'Billing Readiness', FiCheckCircle, 'Recommend the next SD actions needed to move this record toward delivery, billing, or revenue recognition.', 'Next SD Actions, Required Owner, Blocking Data, Timing'),
+      buildAiAction('change-impact', 'Revenue Impact', FiGitBranch, 'Explain revenue, billing, delivery, customer, and downstream finance impacts if this record changes.', 'Revenue Impact, Downstream Documents, Customer Impact, Controls to Check'),
+      approvalAction,
+      emailAction,
+    ],
+    finance: [
+      summaryAction,
+      buildAiAction('change-impact', 'Posting Impact', FiGitBranch, 'Analyze FI/CO posting, ledger, account, tax, reconciliation, and reporting impacts for this financial record.', 'Posting Impact, Ledger or Account Risk, Reconciliation Needs, Reporting Impact'),
+      buildAiAction('risk-review', 'Reconciliation Risk', FiShield, 'Identify reconciliation, payment, open-item, period-close, and audit risks for this finance record.', 'Risk Level, Reconciliation Issues, Close or Audit Concerns, Mitigation Plan'),
+      buildAiAction('data-quality', 'Period Close Check', FiList, 'Check whether this record is complete and consistent enough for period close, statutory reporting, and audit review.', 'Completeness, Close Blockers, Audit Evidence, Data Fixes'),
+      approvalAction,
+      emailAction,
+    ],
+    inventory: [
+      summaryAction,
+      buildAiAction('change-impact', 'Stock Impact', FiGitBranch, 'Analyze stock, batch, plant, storage-location, reservation, MRP, and warehouse impacts for this material or procurement record.', 'Stock Impact, MRP or Reservation Impact, Warehouse Touchpoints, Controls to Check'),
+      buildAiAction('process-fit', 'Availability Check', FiRefreshCw, 'Assess availability, ATP-like confirmation, shortage, goods movement, and transfer-posting considerations for this record.', 'Availability, Shortage Risk, Movement Proposal, Warehouse Action'),
+      buildAiAction('next-actions', 'Movement Proposal', FiCheckCircle, 'Recommend appropriate MM/EWM next actions such as goods receipt, issue, transfer, release from quality, or reservation follow-up.', 'Recommended Movement, Required Owner, Preconditions, Timing'),
+      buildAiAction('data-quality', 'Batch/Data Check', FiList, 'Validate plant, storage location, batch, stock type, quantity, vendor, and material fields for operational execution.', 'Missing Fields, Inconsistent Values, Execution Risks, Data Fixes'),
+      approvalAction,
+    ],
+    production: [
+      summaryAction,
+      buildAiAction('change-impact', 'BOM Impact', FiGitBranch, 'Explain BOM, routing, component, work-center, production-order, and cost rollup impact for this production record.', 'BOM or Routing Impact, Component Risk, Cost Impact, Change Controls'),
+      buildAiAction('process-fit', 'Capacity Check', FiRefreshCw, 'Assess work-center capacity, routing feasibility, queue risk, and schedule pressure for this production record.', 'Capacity Findings, Bottlenecks, Schedule Risk, Recommended Actions'),
+      buildAiAction('next-actions', 'Cost Rollup', FiCheckCircle, 'Recommend production planning and costing next steps, including MRP, standard cost, variance, and release actions.', 'Planning Actions, Costing Actions, Owner, Timing'),
+      buildAiAction('risk-review', 'Quality Risk', FiShield, 'Identify quality, scrap, component shortage, production variance, and release risks for this production record.', 'Quality Risk, Material Risk, Variance Exposure, Mitigation Plan'),
+      approvalAction,
+    ],
+    service: [
+      summaryAction,
+      buildAiAction('risk-review', 'SLA Risk', FiShield, 'Assess SLA, escalation, customer impact, response time, and service-delivery risk for this support/service record.', 'SLA Risk, Customer Impact, Escalation Need, Mitigation Plan'),
+      buildAiAction('next-actions', 'Resolution Plan', FiCheckCircle, 'Recommend a practical service resolution plan with owner, priority, communication, and closure steps.', 'Resolution Steps, Owner, Customer Communication, Closure Criteria'),
+      buildAiAction('change-impact', 'Customer Impact', FiGitBranch, 'Analyze customer, contract, SLA, billing, and operational impacts if this service record changes.', 'Customer Impact, Contract or SLA Impact, Operational Impact, Follow-up Controls'),
+      buildAiAction('data-quality', 'Case Data Check', FiList, 'Check case fields, categorization, priority, assignment, SLA, and resolution data quality.', 'Missing Data, Classification Issues, SLA Data Gaps, Corrections'),
+      emailAction,
+    ],
+    hr: [
+      summaryAction,
+      buildAiAction('risk-review', 'Compliance Risk', FiShield, 'Assess HR, payroll, privacy, policy, training, leave, and employee-relations compliance risk for this record.', 'Compliance Risk, Policy Issues, Privacy Concerns, Mitigation Plan'),
+      buildAiAction('change-impact', 'Employee Impact', FiGitBranch, 'Explain employee, manager, payroll, benefits, time, and organizational impacts if this HR record changes.', 'Employee Impact, Payroll or Benefits Impact, Manager Actions, Controls to Check'),
+      approvalAction,
+      buildAiAction('data-quality', 'HR Data Check', FiList, 'Validate employee, effective date, manager, compensation, leave, training, and status data quality.', 'Missing Fields, Effective-Dated Issues, Compliance Gaps, Data Fixes'),
+      emailAction,
+    ],
+    security: [
+      summaryAction,
+      buildAiAction('risk-review', 'SoD / Access Risk', FiShield, 'Assess segregation-of-duties, privileged access, authorization, audit, and compliance risk for this security/control record.', 'Access Risk, SoD Conflicts, Privileged Exposure, Mitigation Plan'),
+      buildAiAction('data-quality', 'Control Gaps', FiList, 'Evaluate control design, evidence, ownership, frequency, remediation, and audit-readiness gaps.', 'Control Completeness, Evidence Gaps, Ownership Issues, Remediation'),
+      buildAiAction('change-impact', 'Audit Impact', FiGitBranch, 'Explain audit, compliance, role, process, and downstream access impacts if this record changes.', 'Audit Impact, Compliance Impact, Role or Process Impact, Required Evidence'),
+      buildAiAction('next-actions', 'Remediation Plan', FiCheckCircle, 'Recommend remediation actions for access, control, audit, and compliance findings.', 'Remediation Steps, Owner, Due Date, Verification'),
+      approvalAction,
+    ],
+    quality: [
+      summaryAction,
+      buildAiAction('risk-review', 'Inspection Risk', FiShield, 'Assess inspection, defect, supplier quality, batch release, and customer quality risk for this record.', 'Inspection Risk, Defect Exposure, Containment, Mitigation Plan'),
+      buildAiAction('next-actions', 'Corrective Actions', FiCheckCircle, 'Recommend containment, root-cause, corrective, preventive, and release actions.', 'Containment, Root Cause, Corrective Actions, Release Decision'),
+      buildAiAction('change-impact', 'Process Impact', FiGitBranch, 'Explain production, supplier, customer, inventory, and compliance impacts of this quality record.', 'Process Impact, Supplier or Customer Impact, Inventory Impact, Controls'),
+      buildAiAction('data-quality', 'Quality Data Check', FiList, 'Check inspection lot, defect, batch, material, supplier, and disposition data quality.', 'Data Completeness, Classification Gaps, Disposition Issues, Corrections'),
+    ],
+    maintenance: [
+      summaryAction,
+      buildAiAction('risk-review', 'Asset Risk', FiShield, 'Assess equipment, downtime, safety, maintenance backlog, spare parts, and reliability risk.', 'Asset Risk, Downtime Exposure, Safety Concerns, Mitigation Plan'),
+      buildAiAction('next-actions', 'Work Plan', FiCheckCircle, 'Recommend maintenance planning steps including labor, parts, scheduling, permits, and closeout.', 'Work Steps, Required Parts, Schedule, Closeout Criteria'),
+      buildAiAction('change-impact', 'Downtime Impact', FiGitBranch, 'Explain operational, production, safety, and financial impact if this maintenance record changes.', 'Downtime Impact, Production Impact, Safety Impact, Controls'),
+      buildAiAction('process-fit', 'Parts Readiness', FiRefreshCw, 'Assess spare-parts readiness, reservations, procurement need, and execution feasibility.', 'Parts Status, Procurement Need, Execution Readiness, Recommendations'),
+    ],
+    project: [
+      summaryAction,
+      buildAiAction('risk-review', 'Budget/Schedule Risk', FiShield, 'Assess budget, schedule, scope, resource, milestone, and stakeholder risk for this project record.', 'Risk Level, Budget Exposure, Schedule Exposure, Mitigation Plan'),
+      buildAiAction('next-actions', 'Milestone Actions', FiCheckCircle, 'Recommend milestone, resource, dependency, and governance next steps.', 'Milestone Actions, Owner, Dependencies, Timing'),
+      buildAiAction('change-impact', 'Resource Impact', FiGitBranch, 'Explain resource, cost, schedule, WBS, network, and reporting impact if this project record changes.', 'Resource Impact, Cost or Schedule Impact, Reporting Impact, Controls'),
+      approvalAction,
+      emailAction,
+    ],
+    general: [
+      summaryAction,
+      buildAiAction('risk-review', 'Risk Review', FiShield, 'Identify business, operational, financial, compliance, and data risks for this record.', 'Risk Level, Key Risks, Control Gaps, Mitigation Plan'),
+      buildAiAction('next-actions', 'Next Actions', FiCheckCircle, 'Recommend practical next steps for this record in its current process context.', 'Recommended Actions, Owner, Timing, Business Rationale'),
+      buildAiAction('data-quality', 'Data Quality', FiList, 'Evaluate missing, weak, inconsistent, stale, or suspicious field values and propose corrections.', 'Completeness, Quality Issues, Suggested Corrections, Validation Rules'),
+      duplicateAction,
+      buildAiAction('change-impact', 'Impact', FiGitBranch, 'Explain downstream process, reporting, compliance, master-data, and integration impacts if this record changes.', 'Impacted Processes, Dependent Records, Testing Needed, Rollback Considerations'),
+      emailAction,
+    ],
+  };
+  const recordAiActions = contextualAiActions[context] || contextualAiActions.general;
+  const contextLabel = {
+    sales: 'Sales / SD',
+    finance: 'Finance / FI-CO',
+    inventory: 'Inventory / MM-EWM',
+    production: 'Production / PP',
+    service: 'Service / CS',
+    hr: 'HR / HCM',
+    security: 'Security / GRC',
+    quality: 'Quality / QM',
+    maintenance: 'Maintenance / PM',
+    project: 'Project / PS',
+    general: 'General',
+  }[context] || 'General';
 
   return (
     <div style={styles.page}>
@@ -649,16 +950,6 @@ export default function ModulePage() {
                     </div>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <button onClick={handleAiSummary} disabled={aiSummaryLoading} style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', fontSize:12, fontWeight:600, color:'#8B47D7', background:'#F8F5FF', border:'1px solid #E8DEF8', borderRadius:6, cursor: aiSummaryLoading ? 'default' : 'pointer' }} title="AI Summary">
-                      <FiCpu size={14} />
-                      {aiSummaryLoading ? 'Loading...' : 'AI Summary'}
-                    </button>
-                    {moduleKey === 'tickets' && (
-                      <button onClick={handleTicketClassify} disabled={classifyLoading} style={{ display:'flex', alignItems:'center', gap:5, padding:'7px 12px', fontSize:12, fontWeight:600, color:'#E76500', background:'#FFF8F0', border:'1px solid #FFE0B2', borderRadius:6, cursor: classifyLoading ? 'default' : 'pointer' }} title="AI Classify">
-                        <FiTag size={14} />
-                        {classifyLoading ? 'Classifying...' : 'AI Classify'}
-                      </button>
-                    )}
                     <button onClick={closeDetail} style={styles.modalClose}>
                       <FiX size={20} />
                     </button>
@@ -676,20 +967,53 @@ export default function ModulePage() {
                   } catch {}
                 }} />
 
-                {/* AI Summary Section */}
-                {aiSummary && (
-                  <div style={{ margin:'0 24px', padding:'14px 16px', background:'#F8F5FF', border:'1px solid #E8DEF8', borderRadius:8 }}>
+                {/* Popup AI Action Bar */}
+                <div style={{ margin:'0 24px 12px', padding:'12px 14px', background:'#FAFBFF', border:'1px solid #E8EBF0', borderRadius:8 }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:10, marginBottom:10 }}>
+                    <span style={{ fontSize:12, fontWeight:700, color:'#354A5F', textTransform:'uppercase', letterSpacing:'0.3px' }}>AI Actions · {contextLabel}</span>
+                    {(aiActionLoading || emailDraftLoading) && (
+                      <span style={{ fontSize:12, color:'#6A767D' }}>Working...</span>
+                    )}
+                  </div>
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                    {recordAiActions.map((action) => {
+                      const ActionIcon = action.icon;
+                      const isLoading = aiActionLoading === action.key || (action.key === 'draft-email' && emailDraftLoading);
+                      return (
+                        <button
+                          key={action.key}
+                          onClick={action.onClick}
+                          disabled={Boolean(aiActionLoading || emailDraftLoading)}
+                          style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 11px', minHeight:32, fontSize:12, fontWeight:600, color:isLoading ? '#6A767D' : '#0070F2', background:isLoading ? '#F0F2F5' : '#fff', border:'1px solid #D1E8FF', borderRadius:6, cursor:(aiActionLoading || emailDraftLoading) ? 'default' : 'pointer' }}
+                        >
+                          <ActionIcon size={14} />
+                          {isLoading ? 'Working...' : action.label}
+                        </button>
+                      );
+                    })}
+                    {moduleKey === 'tickets' && (
+                      <button onClick={handleTicketClassify} disabled={Boolean(aiActionLoading || emailDraftLoading || classifyLoading)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 11px', minHeight:32, fontSize:12, fontWeight:600, color:'#E76500', background:'#fff', border:'1px solid #FFE0B2', borderRadius:6, cursor:(aiActionLoading || emailDraftLoading || classifyLoading) ? 'default' : 'pointer' }}>
+                        <FiTag size={14} />
+                        {classifyLoading ? 'Classifying...' : 'Classify'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* AI Result Panel */}
+                {aiPanel && (
+                  <div style={{ margin:'0 24px', padding:'14px 16px', background:aiPanel.tone === 'green' ? '#F2FAF2' : aiPanel.tone === 'orange' ? '#FFF8F0' : aiPanel.tone === 'red' ? '#FDEDED' : '#F8F5FF', border:`1px solid ${aiPanel.tone === 'green' ? '#CDECCB' : aiPanel.tone === 'orange' ? '#FFE0B2' : aiPanel.tone === 'red' ? '#F5C6C6' : '#E8DEF8'}`, borderRadius:8 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
-                      <span style={{ fontSize:12, fontWeight:600, color:'#8B47D7', textTransform:'uppercase' }}>AI Analysis</span>
-                      <button onClick={() => setAiSummary('')} style={{ background:'none', border:'none', cursor:'pointer', color:'#A0AAB4', padding:2, display:'flex' }}><FiX size={14} /></button>
+                      <span style={{ fontSize:12, fontWeight:700, color:aiPanel.tone === 'green' ? '#1E7E34' : aiPanel.tone === 'orange' ? '#E76500' : aiPanel.tone === 'red' ? '#BB0000' : '#8B47D7', textTransform:'uppercase', letterSpacing:'0.3px' }}>{aiPanel.title}</span>
+                      <button onClick={() => setAiPanel(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#A0AAB4', padding:2, display:'flex' }}><FiX size={14} /></button>
                     </div>
-                    <div style={{ fontSize:13, color:'#354A5F', lineHeight:1.6, whiteSpace:'pre-wrap' }}>{aiSummary}</div>
+                    <ProfessionalAiOutput content={aiPanel.content} />
                   </div>
                 )}
 
                 {/* AI Classify Result (tickets only) */}
                 {classifyResult && !classifyResult.error && (
-                  <div style={{ margin:'0 24px', padding:'14px 16px', background:'#FFF8F0', border:'1px solid #FFE0B2', borderRadius:8, marginTop: aiSummary ? 8 : 0 }}>
+                  <div style={{ margin:'0 24px', padding:'14px 16px', background:'#FFF8F0', border:'1px solid #FFE0B2', borderRadius:8, marginTop: aiPanel ? 8 : 0 }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                       <span style={{ fontSize:12, fontWeight:600, color:'#E76500', textTransform:'uppercase' }}>AI Classification</span>
                       <button onClick={() => setClassifyResult(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'#A0AAB4', padding:2, display:'flex' }}><FiX size={14} /></button>

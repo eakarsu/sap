@@ -17,7 +17,7 @@ export default function Login({ onLogin }) {
       if (res && res.token) {
         localStorage.setItem('token', res.token);
         localStorage.setItem('user', JSON.stringify(res.user));
-        onLogin();
+        onLogin(res.user);
       } else {
         setError((res && res.error) || 'Invalid credentials. Please try again.');
       }

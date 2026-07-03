@@ -9,7 +9,7 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const path = require('path');
 const fs = require('fs');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 require('dotenv').config({ path: '../.env' });
 
 // Fail fast if JWT_SECRET is not configured
@@ -325,6 +325,73 @@ const moduleNames = [
   'travel_requests', 'travel_bookings',
   // IBP
   'demand_plans', 'supply_plans',
+  // EWM - Extended Warehouse Management
+  'ewm_warehouse_tasks', 'ewm_wave_picks',
+  // TM - Transportation Management
+  'transportation_freight_orders', 'transportation_planning',
+  // PS - Project System
+  'project_system_wbs', 'project_system_networks',
+  // Treasury and Risk
+  'treasury_cash_positions', 'treasury_deals',
+  // GRC
+  'grc_access_risks', 'grc_controls',
+  // Fieldglass
+  'fieldglass_workers', 'fieldglass_work_orders',
+  // Commerce Cloud
+  'commerce_catalogs', 'commerce_carts',
+  // Analytics Cloud and Datasphere
+  'analytics_stories', 'datasphere_data_flows',
+  // BRIM and Group Reporting
+  'subscription_contracts', 'group_reporting',
+  // EHS, RE-FX, PLM
+  'ehs_incidents', 'real_estate_contracts', 'plm_change_records',
+  // Advanced ATP, Settlement, Localization
+  'advanced_atp_checks', 'settlement_rebates', 'localization_tax_rules',
+  // Basis, Payroll, Time
+  'basis_system_jobs', 'payroll_runs', 'time_sheets',
+  // MDG and Central Finance
+  'mdg_change_requests', 'mdg_data_quality', 'central_finance_documents', 'central_finance_mappings',
+  // FSCM
+  'credit_management_cases', 'dispute_management_cases', 'collections_worklists', 'cash_application_items',
+  // BTP and Integration Suite
+  'integration_suite_flows', 'btp_subaccounts', 'event_mesh_topics', 'api_management_products',
+  // ILM, DMS, Configuration, Product Compliance
+  'ilm_retention_policies', 'document_management_files', 'variant_config_models', 'product_compliance_specs',
+  // Service Management and Customer Data
+  'service_management_orders', 'field_service_assignments', 'customer_identity_profiles', 'customer_data_segments',
+  // Industry Cloud
+  'industry_utilities_devices', 'industry_utilities_billing', 'industry_retail_assortments', 'industry_retail_promotions',
+  'industry_oil_gas_nominations', 'industry_banking_loans', 'industry_insurance_claims', 'industry_public_sector_grants',
+  'industry_healthcare_cases', 'industry_higher_ed_students', 'industry_defense_contracts', 'industry_aerospace_programs',
+  // Sustainability and Signavio
+  'sustainability_esg_metrics', 'green_ledger_entries', 'signavio_process_models', 'process_mining_cases',
+  // ALM, architecture, Joule, Build
+  'cloud_alm_projects', 'cloud_alm_operations', 'solution_manager_changes', 'solution_manager_test_plans',
+  'leanix_applications', 'walkme_guidance', 'joule_skills', 'ai_core_deployments',
+  'build_apps_projects', 'build_process_automations', 'build_work_zone_sites',
+  // BTP runtimes, identity, HANA, BW, data
+  'identity_authentication_apps', 'identity_provisioning_jobs', 'btp_abap_environments',
+  'btp_kyma_workloads', 'cap_services', 'hana_cloud_databases', 'bw4hana_queries',
+  'data_intelligence_pipelines',
+  // SuccessFactors and CX deep products
+  'successfactors_employee_central', 'successfactors_learning', 'successfactors_goals',
+  'successfactors_workforce_analytics', 'sales_cloud_opportunities', 'service_cloud_cases',
+  'cpq_quotes', 'emarsys_campaigns', 'customer_checkout_pos', 'digital_payments',
+  // Manufacturing, asset, logistics network
+  'digital_manufacturing_orders', 'manufacturing_execution_operations', 'manufacturing_insights',
+  'asset_performance_models', 'asset_network_collaboration', 'yard_logistics_appointments',
+  'logistics_business_network_shipments',
+  // Finance, compliance, portfolio
+  'advanced_financial_close_tasks', 'revenue_accounting_contracts', 'profitability_performance_models',
+  'document_reporting_compliance', 'contract_accounts_receivable_payable', 'funds_management_budget',
+  'joint_venture_accounting', 'commodity_management_deals', 'trade_promotion_management',
+  'sales_performance_management', 'territory_quota_plans', 'enterprise_portfolio_initiatives',
+  'innovation_management_ideas',
+  // Supplier, quality, audit, environment, experience, traceability
+  'sourcing_supplier_network', 'supplier_risk_assessments', 'quality_issue_resolution',
+  'audit_management_plans', 'environment_management_permits', 'waste_management_records',
+  'mobile_start_cards', 'fiori_launchpad_spaces', 'enable_now_content', 'business_network_assets',
+  'business_network_material_traceability',
   // Operations
   'projects', 'tasks', 'activities', 'goals',
   // System
@@ -606,7 +673,8 @@ const aiRateLimiter = rateLimit({
         if (decoded?.id) return `user:${decoded.id}`;
       }
     } catch {}
-    return `ip:${req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip}`;
+    const forwardedFor = req.headers['x-forwarded-for']?.split(',')[0].trim();
+    return `ip:${ipKeyGenerator(forwardedFor || req.ip)}`;
   },
 });
 
@@ -2846,6 +2914,91 @@ The email should be contextually appropriate - e.g., follow-up for opportunities
     const result = await callAI([{ role: 'user', content: prompt }]);
     const content = result?.choices?.[0]?.message?.content || 'Unable to generate email draft.';
     res.json({ result: content });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. AI Record Action - Purpose-specific analysis for every record popup
+app.post('/api/ai/record-action', auth, async (req, res) => {
+  try {
+    const { module, record, fields, action, purposeTitle, purposeInstructions, purposeSections } = req.body;
+    if (!module || !record || !action) return res.status(400).json({ error: 'Module, record, and action required' });
+    if (!moduleNames.includes(module)) return res.status(400).json({ error: 'Invalid module' });
+
+    const actionPrompts = {
+      'risk-review': {
+        title: 'Risk Review',
+        focus: 'Identify operational, financial, compliance, data, delivery, and customer risks in this record.',
+        sections: 'Risk Level, Key Risks, Control Gaps, Mitigation Plan',
+      },
+      'next-actions': {
+        title: 'Next Best Actions',
+        focus: 'Recommend practical next steps that a SAP business user should take for this record.',
+        sections: 'Recommended Actions, Owner or Role, Timing, Business Rationale',
+      },
+      'data-quality': {
+        title: 'Data Quality Review',
+        focus: 'Evaluate missing, weak, inconsistent, stale, or suspicious field values and propose corrections.',
+        sections: 'Completeness, Quality Issues, Suggested Corrections, Validation Rules',
+      },
+      'approval-route': {
+        title: 'Approval Route',
+        focus: 'Determine whether this record likely needs approval and suggest the SAP roles or departments involved.',
+        sections: 'Approval Need, Suggested Approvers, Escalation Conditions, Evidence Required',
+      },
+      'change-impact': {
+        title: 'Change Impact',
+        focus: 'Explain downstream SAP process, integration, reporting, compliance, and master-data impacts if this record changes.',
+        sections: 'Impacted Processes, Dependent Records or Modules, Testing Needed, Rollback Considerations',
+      },
+      'process-fit': {
+        title: 'Process Fit',
+        focus: 'Assess how this record fits the related SAP process and where automation or controls can improve execution.',
+        sections: 'Process Fit, Integration Touchpoints, Automation Opportunities, Control Recommendations',
+      },
+    };
+
+    const baseSelected = actionPrompts[action] || actionPrompts['next-actions'];
+    const selected = {
+      ...baseSelected,
+      title: purposeTitle || baseSelected.title,
+      focus: purposeInstructions || baseSelected.focus,
+      sections: purposeSections || baseSelected.sections,
+    };
+    const fieldContext = Array.isArray(fields)
+      ? fields.map(f => `${f.label || f.key}: ${f.key}${f.required ? ' (required)' : ''}${f.type ? `, ${f.type}` : ''}`).join('\n')
+      : '';
+
+    let ragContext = '';
+    try {
+      const recordPairs = Object.entries(record).filter(([, v]) => v && String(v).trim()).slice(0, 8).map(([k, v]) => `${k}: ${v}`).join(', ');
+      const similar = await searchSimilar(recordPairs || module, module, 3);
+      if (similar.length > 0) {
+        ragContext = '\n\nRelevant context from knowledge base:\n' +
+          similar.map(s => `[${s.source_type}] ${s.content_chunk.substring(0, 300)}`).join('\n---\n');
+      }
+    } catch (e) { /* RAG is optional enhancement */ }
+
+    const prompt = `You are an enterprise SAP application copilot. Perform this action for the selected ${module} popup record.
+
+Action: ${selected.title}
+Purpose: ${selected.focus}
+
+Field definitions:
+${fieldContext || 'No field definitions supplied.'}
+
+Record data:
+${JSON.stringify(record, null, 2)}
+${ragContext}
+
+Return a professional business analysis in markdown only. Do not return JSON, code fences, or implementation notes.
+Use these sections exactly: ${selected.sections}.
+Use concise bullet points with concrete, record-specific recommendations. If data is missing, say what is missing and why it matters.`;
+
+    const result = await callAI([{ role: 'user', content: prompt }], { temperature: 0.2, maxTokens: 2200 });
+    const content = result?.choices?.[0]?.message?.content || `Unable to generate ${selected.title.toLowerCase()}.`;
+    res.json({ title: selected.title, result: content });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -6082,6 +6235,15 @@ app.use('/api/sap-extras', require('./routes/aiExtras')); // Custom Feature Sugg
 app.use('/api/approval-exposure', require('./routes/approvalExposure'));
 app.use('/api', require('./routes/gap-features')); // === Batch 11 Gaps & Frontend Mounts ===
 app.use('/api/custom-views', require('./routes/customViews')); // 4 SAP custom views (system status / tx volume / IDoc / batch jobs)
+app.use('/api/sap-controls', require('./routes/enterpriseControls'));
+app.use('/api/sap-process', require('./routes/processHub'));
+app.use('/api/sap-config', require('./routes/configHub'));
+app.use('/api/sap-workflow', require('./routes/workflowInbox'));
+app.use('/api/sap-auth', require('./routes/authorizationCenter'));
+app.use('/api/sap-finance', require('./routes/financeLedger'));
+app.use('/api/sap-production', require('./routes/productionPlanning'));
+app.use('/api/sap-sd', require('./routes/salesDistribution'));
+app.use('/api/sap-inventory', require('./routes/inventoryWarehouse'));
 
 app.listen(PORT, () => {
   console.log(`SAP CRM API Server running on port ${PORT}`);

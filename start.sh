@@ -23,7 +23,9 @@ PROJECT_ROOT=$(pwd)
 
 # Load env
 if [ -f .env ]; then
-  export $(grep -v '^#' .env | xargs)
+  set -a
+  source .env
+  set +a
   echo -e "${GREEN}✓${NC} Environment loaded from .env"
 else
   echo -e "${RED}✗ .env file not found!${NC}"
@@ -35,8 +37,20 @@ FRONTEND_PORT=${FRONTEND_PORT:-3001}
 
 # Clean ports
 echo -e "\n${YELLOW}▸ Cleaning ports ${BACKEND_PORT} and ${FRONTEND_PORT}...${NC}"
-lsof -ti:${BACKEND_PORT} 2>/dev/null | xargs kill -9 2>/dev/null || true
-lsof -ti:${FRONTEND_PORT} 2>/dev/null | xargs kill -9 2>/dev/null || true
+kill_port_tree() {
+  local port=$1
+  local pids
+  pids=$(lsof -ti:${port} 2>/dev/null || true)
+  for pid in $pids; do
+    local parent grandparent
+    parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    grandparent=$(ps -o ppid= -p "$parent" 2>/dev/null | tr -d ' ')
+    kill -9 "$pid" "$parent" "$grandparent" 2>/dev/null || true
+  done
+}
+kill_port_tree "${BACKEND_PORT}"
+kill_port_tree "${FRONTEND_PORT}"
+sleep 1
 echo -e "${GREEN}✓${NC} Ports cleared"
 
 # Check prerequisites
@@ -50,9 +64,10 @@ echo -e "${GREEN}✓${NC} PostgreSQL server is running"
 
 # Create database
 echo -e "\n${YELLOW}▸ Setting up database...${NC}"
-psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'sapcrm'" 2>/dev/null | grep -q 1 || \
-  psql -U postgres -c "CREATE DATABASE sapcrm" 2>/dev/null
-echo -e "${GREEN}✓${NC} Database 'sapcrm' ready"
+DB_NAME=$(node -e "const url = process.env.DATABASE_URL; if (!url) process.exit(1); console.log(new URL(url).pathname.replace(/^\\//, ''));" 2>/dev/null || echo "sapcrm")
+psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" 2>/dev/null | grep -q 1 || \
+  psql -U postgres -c "CREATE DATABASE \"${DB_NAME}\"" 2>/dev/null
+echo -e "${GREEN}✓${NC} Database '${DB_NAME}' ready"
 
 # Install backend deps
 echo -e "\n${YELLOW}▸ Installing backend dependencies...${NC}"
@@ -85,7 +100,7 @@ sleep 2
 # Start frontend with HMR
 echo -e "\n${YELLOW}▸ Starting frontend on port ${FRONTEND_PORT}...${NC}"
 cd "$PROJECT_ROOT/frontend"
-npx vite --host &
+BACKEND_URL="http://localhost:${BACKEND_PORT}" npx vite --host 0.0.0.0 --port "${FRONTEND_PORT}" &
 FRONTEND_PID=$!
 echo -e "${GREEN}✓${NC} Frontend starting (PID: $FRONTEND_PID)"
 
