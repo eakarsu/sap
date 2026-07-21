@@ -1,13 +1,3 @@
-// === Batch 11 Gaps & Frontend Mounts ===
-import GapAiInsightsEnginePage from './pages/gap/GapAiInsightsEnginePage'
-import GapTransactionAnomalyPage from './pages/gap/GapTransactionAnomalyPage'
-import GapWorkflowBottleneckPage from './pages/gap/GapWorkflowBottleneckPage'
-import GapMasterDataDedupePage from './pages/gap/GapMasterDataDedupePage'
-import GapOdataConnectorPage from './pages/gap/GapOdataConnectorPage'
-import GapSsoSamlPage from './pages/gap/GapSsoSamlPage'
-import GapWebsocketPushPage from './pages/gap/GapWebsocketPushPage'
-import GapMobileApprovalsPage from './pages/gap/GapMobileApprovalsPage'
-import CustomViewsPage from './pages/CustomViewsPage';
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation, Link } from 'react-router-dom';
 import { modules, sidebarGroups, moduleList } from './modules';
@@ -34,8 +24,6 @@ import SAPInventoryWarehouse from './pages/SAPInventoryWarehouse';
 import { callAI } from './api';
 import { FiGrid, FiCpu, FiLogOut, FiMenu, FiX, FiChevronDown, FiChevronRight, FiUser, FiSearch, FiSettings, FiBarChart2, FiCalendar, FiCheckSquare, FiShield, FiGitBranch } from 'react-icons/fi';
 
-import CodexCustomVizFeature from './pages/CodexCustomVizFeature';
-import CodexOperationsFeature from './pages/CodexOperationsFeature';
 
 const sampleSearches = [
   'Show all overdue invoices over $10,000',
@@ -375,9 +363,6 @@ export default function App() {
   if (!user) {
     return (
       <Routes>
-        <Route path="/codex/custom-viz" element={<CodexCustomVizFeature />} />
-        <Route path="/codex/operations" element={<CodexOperationsFeature />} />
-
         <Route path="/login" element={<Login onLogin={handleLogin} />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
@@ -404,20 +389,10 @@ export default function App() {
         <Route path="/sap-production-planning" element={<SAPProductionPlanning />} />
         <Route path="/sap-sales-distribution" element={<SAPSalesDistribution />} />
         <Route path="/sap-inventory-warehouse" element={<SAPInventoryWarehouse />} />
-        <Route path="/custom-views" element={<CustomViewsPage />} />
         <Route path="/:moduleKey" element={<ModulePage />} />
         <Route path="/:moduleKey/:id" element={<DetailPage />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/login" element={<Navigate to="/dashboard" replace />} />
-            {/* === Batch 11 Gaps & Frontend Mounts === */}
-        <Route path="/gap/ai-insights-engine" element={<GapAiInsightsEnginePage />} />
-        <Route path="/gap/transaction-anomaly" element={<GapTransactionAnomalyPage />} />
-        <Route path="/gap/workflow-bottleneck" element={<GapWorkflowBottleneckPage />} />
-        <Route path="/gap/master-data-dedupe" element={<GapMasterDataDedupePage />} />
-        <Route path="/gap/odata-connector" element={<GapOdataConnectorPage />} />
-        <Route path="/gap/sso-saml" element={<GapSsoSamlPage />} />
-        <Route path="/gap/websocket-push" element={<GapWebsocketPushPage />} />
-        <Route path="/gap/mobile-approvals" element={<GapMobileApprovalsPage />} />
       </Routes>
     </Layout>
   );

@@ -1,0 +1,4 @@
+[[allowlists]]
+description = "False positive: static SAP module identifier, not a credential"
+paths = ['''frontend/src/modules\.js''']
+regexes = ['''key:\s*['"]bw4hana_queries['"]''']

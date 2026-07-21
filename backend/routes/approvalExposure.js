@@ -3,12 +3,10 @@ const express = require('express');
 const router = express.Router();
 
 router.post('/score', (req, res) => {
-  const approvals = Array.isArray(req.body?.approvals)
-    ? req.body.approvals
-    : [
-        { id: 'PO-1009', value: 82000, daysWaiting: 6, approverLoad: 14 },
-        { id: 'INV-228', value: 12000, daysWaiting: 2, approverLoad: 4 },
-      ];
+  const approvals = req.body?.approvals;
+  if (!Array.isArray(approvals) || approvals.length === 0) {
+    return res.status(400).json({ error: 'A non-empty approvals array is required' });
+  }
   const scored = approvals.map((item) => {
     const exposure = Math.round(Number(item.value || 0) * (Number(item.daysWaiting || 0) / 30) * (1 + Number(item.approverLoad || 0) / 20));
     return {

@@ -1,6 +1,17 @@
 const pool = require('./db');
 const bcrypt = require('bcryptjs');
 
+if (process.env.ALLOW_DESTRUCTIVE_SEED !== 'YES') {
+  console.error('Refusing destructive seed. Set ALLOW_DESTRUCTIVE_SEED=YES only for an empty disposable database.');
+  process.exit(1);
+}
+const seedAdminEmail = String(process.env.SEED_ADMIN_EMAIL || '').trim().toLowerCase();
+const seedAdminPassword = String(process.env.SEED_ADMIN_PASSWORD || '');
+if (!seedAdminEmail || seedAdminPassword.length < 16) {
+  console.error('SEED_ADMIN_EMAIL and a SEED_ADMIN_PASSWORD of at least 16 characters are required.');
+  process.exit(1);
+}
+
 const extendedSapTables = [
   'ewm_warehouse_tasks', 'ewm_wave_picks',
   'transportation_freight_orders', 'transportation_planning',
@@ -170,11 +181,9 @@ async function seed() {
     console.log('Extended SAP module tables created');
 
     // SEED USERS
-    const hash = await bcrypt.hash('password123', 10);
+    const hash = await bcrypt.hash(seedAdminPassword, 12);
     await ins('users', ['email','password','full_name','role'], [
-      ['admin@sapcrm.com', hash, 'SAP Admin', 'admin'],
-      ['sarah.mueller@sapcrm.com', hash, 'Sarah Mueller', 'manager'],
-      ['thomas.weber@sapcrm.com', hash, 'Thomas Weber', 'user'],
+      [seedAdminEmail, hash, 'SAP Admin', 'admin'],
     ]);
 
     // SEED ACCOUNTS
@@ -1824,7 +1833,6 @@ async function seed() {
 
 await client.query('COMMIT');
     console.log('SAP CRM Database seeded successfully!');
-    console.log('Login: admin@sapcrm.com / password123');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Seed failed:', err.message);

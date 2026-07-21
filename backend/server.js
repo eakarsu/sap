@@ -5,33 +5,28 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('./db');
 const auth = require('./middleware/auth');
+const authorize = require('./middleware/authorize');
+const { normalizeEmail, normalizeRole, validPassword } = require('./lib/security');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const path = require('path');
 const fs = require('fs');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 require('dotenv').config({ path: '../.env' });
-
-// Fail fast if JWT_SECRET is not configured
-if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set. Refusing to start.');
-  process.exit(1);
-}
+const { corsOrigins, host, jwtAudience, jwtIssuer, jwtSecret, port } = require('./config');
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 4002;
+app.disable('x-powered-by');
 
 // Security headers (helmet) — disable CSP since this is an API serving JSON.
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
 
-// CORS — origins from env (comma-separated) or wildcard for dev.
-const corsOrigins = (process.env.CORS_ORIGIN || '*')
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
 app.use(
   cors({
-    origin: corsOrigins.includes('*') ? true : corsOrigins,
+    origin(origin, callback) {
+      if (!origin || corsOrigins.includes(origin)) return callback(null, true);
+      callback(new Error('Origin not allowed'));
+    },
     credentials: true,
   })
 );
@@ -203,8 +198,6 @@ async function syncEmbeddings() {
   }
 }
 
-initDB();
-
 // ============ EMBEDDING ENGINE ============
 let embedderInstance = null;
 async function getEmbedder() {
@@ -263,18 +256,29 @@ async function searchSimilar(queryText, sourceType = null, limit = 5) {
 }
 
 // ============ AUTH ROUTES ============
+app.get('/api/health', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true });
+  } catch (_error) {
+    res.status(503).json({ ok: false, error: 'database unavailable' });
+  }
+});
+
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const email = normalizeEmail(req.body?.email);
+    const password = String(req.body?.password || '');
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+    const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [email]);
     if (result.rows.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, full_name: user.full_name },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { id: user.id, email: normalizeEmail(user.email) },
+      jwtSecret,
+      { algorithm: 'HS256', subject: String(user.id), issuer: jwtIssuer, audience: jwtAudience, expiresIn: '1h' }
     );
     res.json({ token, user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role } });
   } catch (err) {
@@ -290,6 +294,17 @@ app.get('/api/auth/me', auth, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Every remaining API requires a live database user. Regular users are
+// read-only; managers and administrators may submit mutations.
+app.use('/api', auth);
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  return authorize('admin', 'manager')(req, res, next);
+});
+app.use('/api/rag', (_req, res) => res.status(501).json({
+  error: 'RAG endpoints are disabled until a deployment-owned vector service and migration are configured',
+}));
 // ============ GENERIC CRUD ROUTES ============
 const moduleNames = [
   // SD - Sales
@@ -400,6 +415,13 @@ const moduleNames = [
 
 // Cache valid columns per table for safe sorting and filtering
 const validColumnsCache = {};
+async function writeAudit(client, req, action, table, entityId, details) {
+  await client.query(
+    `INSERT INTO audit_logs (action, entity_type, entity_id, user_name, changes, ip_address, details)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [action, table, entityId, req.user.email, JSON.stringify(details || {}), req.ip || null, `${action} through authenticated API`]
+  );
+}
 async function getValidColumns(table) {
   if (validColumnsCache[table]) return validColumnsCache[table];
   const result = await pool.query(
@@ -458,78 +480,89 @@ moduleNames.forEach((table) => {
 
   // POST create
   app.post(`/api/${table}`, auth, async (req, res) => {
+    const client = await pool.connect();
     try {
       const validCols = await getValidColumns(table);
       const keys = Object.keys(req.body).filter(k => k !== 'id' && k !== 'created_at' && k !== 'updated_at' && validCols.includes(k));
+      if (keys.length === 0) return res.status(400).json({ error: 'At least one supported field is required' });
       const values = keys.map(k => req.body[k]);
       const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-      const result = await pool.query(
+      await client.query('BEGIN');
+      const result = await client.query(
         `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders}) RETURNING *`,
         values
       );
+      await writeAudit(client, req, 'create', table, result.rows[0].id, { after: result.rows[0] });
+      await client.query('COMMIT');
       res.status(201).json(result.rows[0]);
     } catch (err) {
+      await client.query('ROLLBACK');
       res.status(500).json({ error: err.message });
+    } finally {
+      client.release();
     }
   });
 
   // PUT update (with change history tracking)
   app.put(`/api/${table}/:id`, auth, async (req, res) => {
+    const client = await pool.connect();
     try {
+      await client.query('BEGIN');
       // Fetch old record for change tracking
-      const oldResult = await pool.query(`SELECT * FROM ${table} WHERE id = $1`, [req.params.id]);
+      const oldResult = await client.query(`SELECT * FROM ${table} WHERE id = $1 FOR UPDATE`, [req.params.id]);
       const oldRecord = oldResult.rows[0];
+      if (!oldRecord) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Not found' });
+      }
 
       const validCols = await getValidColumns(table);
       const keys = Object.keys(req.body).filter(k => k !== 'id' && k !== 'created_at' && k !== 'updated_at' && validCols.includes(k));
+      if (keys.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'At least one supported field is required' });
+      }
       const values = keys.map(k => req.body[k]);
       let setClause = keys.map((k, i) => `${k} = $${i + 1}`).join(', ');
       if (validCols.includes('updated_at')) {
         setClause += ', updated_at = NOW()';
       }
       values.push(req.params.id);
-      const result = await pool.query(
+      const result = await client.query(
         `UPDATE ${table} SET ${setClause} WHERE id = $${values.length} RETURNING *`,
         values
       );
       if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
 
-      // Track field-level changes in audit_logs
-      if (oldRecord) {
-        try {
-          const changes = [];
-          for (const key of keys) {
-            const oldVal = oldRecord[key];
-            const newVal = req.body[key];
-            if (String(oldVal || '') !== String(newVal || '')) {
-              changes.push({ field: key, old_value: String(oldVal || ''), new_value: String(newVal || '') });
-            }
-          }
-          if (changes.length > 0) {
-            const old_values = {};
-            for (const ch of changes) old_values[ch.field] = ch.old_value;
-            await pool.query(
-              `INSERT INTO audit_logs (entity_type, entity_id, action, changes, changed_by, old_values, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-              [table, req.params.id, 'update', JSON.stringify(changes), req.user?.email || 'system', JSON.stringify(old_values)]
-            );
-          }
-        } catch (auditErr) { /* audit logging is best-effort */ }
-      }
-
+      await writeAudit(client, req, 'update', table, req.params.id, { before: oldRecord, after: result.rows[0] });
+      await client.query('COMMIT');
       res.json(result.rows[0]);
     } catch (err) {
+      await client.query('ROLLBACK');
       res.status(500).json({ error: err.message });
+    } finally {
+      client.release();
     }
   });
 
   // DELETE
-  app.delete(`/api/${table}/:id`, auth, async (req, res) => {
+  app.delete(`/api/${table}/:id`, auth, authorize('admin'), async (req, res) => {
+    const client = await pool.connect();
     try {
-      const result = await pool.query(`DELETE FROM ${table} WHERE id = $1 RETURNING *`, [req.params.id]);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+      await client.query('BEGIN');
+      const result = await client.query(`DELETE FROM ${table} WHERE id = $1 RETURNING *`, [req.params.id]);
+      if (result.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Not found' });
+      }
+      await writeAudit(client, req, 'delete', table, req.params.id, { before: result.rows[0] });
+      await client.query('COMMIT');
       res.json({ message: 'Deleted successfully' });
     } catch (err) {
+      await client.query('ROLLBACK');
       res.status(500).json({ error: err.message });
+    } finally {
+      client.release();
     }
   });
 });
@@ -606,7 +639,7 @@ app.get('/api/search/global', auth, async (req, res) => {
 });
 
 // ============ USER MANAGEMENT ============
-app.get('/api/admin/users', auth, async (req, res) => {
+app.get('/api/admin/users', auth, authorize('admin'), async (req, res) => {
   try {
     const result = await pool.query('SELECT id, email, full_name, role, created_at FROM users ORDER BY id');
     res.json(result.rows);
@@ -615,14 +648,20 @@ app.get('/api/admin/users', auth, async (req, res) => {
   }
 });
 
-app.post('/api/admin/users', auth, async (req, res) => {
+app.post('/api/admin/users', auth, authorize('admin'), async (req, res) => {
   try {
-    const { email, password, full_name, role } = req.body;
+    const email = normalizeEmail(req.body?.email);
+    const password = req.body?.password;
+    const full_name = String(req.body?.full_name || '').trim();
+    const role = normalizeRole(req.body?.role);
+    if (!email || !validPassword(password) || !role) {
+      return res.status(400).json({ error: 'Valid email, password of at least 16 characters, and supported role are required' });
+    }
     const bcrypt = require('bcryptjs');
     const hash = await bcrypt.hash(password, 10);
     const result = await pool.query(
       'INSERT INTO users (email, password, full_name, role) VALUES ($1, $2, $3, $4) RETURNING id, email, full_name, role, created_at',
-      [email, hash, full_name, role || 'user']
+      [email, hash, full_name, role]
     );
     res.json(result.rows[0]);
   } catch (err) {
@@ -630,9 +669,12 @@ app.post('/api/admin/users', auth, async (req, res) => {
   }
 });
 
-app.put('/api/admin/users/:id', auth, async (req, res) => {
+app.put('/api/admin/users/:id', auth, authorize('admin'), async (req, res) => {
   try {
-    const { full_name, role, email } = req.body;
+    const full_name = String(req.body?.full_name || '').trim();
+    const role = normalizeRole(req.body?.role);
+    const email = normalizeEmail(req.body?.email);
+    if (!email || !role) return res.status(400).json({ error: 'Valid email and supported role are required' });
     const result = await pool.query(
       'UPDATE users SET full_name = $1, role = $2, email = $3 WHERE id = $4 RETURNING id, email, full_name, role, created_at',
       [full_name, role, email, req.params.id]
@@ -644,7 +686,7 @@ app.put('/api/admin/users/:id', auth, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/users/:id', auth, async (req, res) => {
+app.delete('/api/admin/users/:id', auth, authorize('admin'), async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
     await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
@@ -698,6 +740,11 @@ function sanitizeMessages(messages) {
 }
 
 async function callAI(messages, opts = {}) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    const error = new Error('AI service unavailable: OPENROUTER_API_KEY is not configured');
+    error.statusCode = 503;
+    throw error;
+  }
   const sanitized = sanitizeMessages(messages);
   const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
@@ -715,6 +762,11 @@ async function callAI(messages, opts = {}) {
     }),
   });
   const data = await response.json();
+  if (!response.ok || data.error) {
+    const error = new Error(data.error?.message || `AI provider returned ${response.status}`);
+    error.statusCode = 502;
+    throw error;
+  }
   return data;
 }
 
@@ -5819,54 +5871,10 @@ ${JSON.stringify(employees.rows.slice(0, 50), null, 2)}`;
   }
 });
 
-// ============================================================================
-// MULTI-TENANT — per-tenant AI key store (lite). The tenant_api_keys table
-// holds an encrypted-at-rest reference per tenant. Production should use
-// KMS / Vault — this is a dev-quality stub.
-// ============================================================================
-app.post('/api/admin/tenant-keys', auth, async (req, res) => {
-  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'admin only' });
-  const { tenantId, openrouterApiKey, model } = req.body || {};
-  if (!tenantId || !openrouterApiKey) {
-    return res.status(400).json({ error: 'tenantId and openrouterApiKey required' });
-  }
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS tenant_api_keys (
-        tenant_id VARCHAR(100) PRIMARY KEY,
-        openrouter_api_key TEXT NOT NULL,
-        model VARCHAR(200),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    await pool.query(
-      `INSERT INTO tenant_api_keys (tenant_id, openrouter_api_key, model, updated_at)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (tenant_id) DO UPDATE SET openrouter_api_key = EXCLUDED.openrouter_api_key, model = EXCLUDED.model, updated_at = NOW()`,
-      [tenantId, openrouterApiKey, model || null]
-    );
-    res.json({ message: 'tenant key stored', tenantId });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/admin/tenant-keys', auth, async (req, res) => {
-  if (req.user?.role !== 'Admin') return res.status(403).json({ error: 'admin only' });
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS tenant_api_keys (
-        tenant_id VARCHAR(100) PRIMARY KEY,
-        openrouter_api_key TEXT NOT NULL,
-        model VARCHAR(200),
-        updated_at TIMESTAMP DEFAULT NOW()
-      )
-    `);
-    const r = await pool.query('SELECT tenant_id, model, updated_at FROM tenant_api_keys ORDER BY tenant_id');
-    res.json({ data: r.rows });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// Provider credentials belong in a deployment secret manager. The former
+// plaintext database key store is deliberately unavailable.
+app.all('/api/admin/tenant-keys', authorize('admin'), (_req, res) => {
+  res.status(501).json({ error: 'Tenant key storage is disabled; configure provider credentials outside the application database' });
 });
 
 // ============================================================================
@@ -6231,10 +6239,7 @@ Return ONLY JSON: { "systemPrompt": "...", "userTemplate": "...", "rationale": "
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.use('/api/sap-extras', require('./routes/aiExtras')); // Custom Feature Suggestions (batch 11)
 app.use('/api/approval-exposure', require('./routes/approvalExposure'));
-app.use('/api', require('./routes/gap-features')); // === Batch 11 Gaps & Frontend Mounts ===
-app.use('/api/custom-views', require('./routes/customViews')); // 4 SAP custom views (system status / tx volume / IDoc / batch jobs)
 app.use('/api/sap-controls', require('./routes/enterpriseControls'));
 app.use('/api/sap-process', require('./routes/processHub'));
 app.use('/api/sap-config', require('./routes/configHub'));
@@ -6245,6 +6250,16 @@ app.use('/api/sap-production', require('./routes/productionPlanning'));
 app.use('/api/sap-sd', require('./routes/salesDistribution'));
 app.use('/api/sap-inventory', require('./routes/inventoryWarehouse'));
 
-app.listen(PORT, () => {
-  console.log(`SAP CRM API Server running on port ${PORT}`);
+const server = app.listen(port, host, () => {
+  console.log(`SAP CRM API Server running at http://${host}:${port}`);
 });
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}; shutting down`);
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+}
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));

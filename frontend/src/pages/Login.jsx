@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { login } from '../api';
-import { FiLogIn, FiZap } from 'react-icons/fi';
+import { FiLogIn } from 'react-icons/fi';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
@@ -26,11 +26,6 @@ export default function Login({ onLogin }) {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDemoLogin = () => {
-    setEmail('admin@sapcrm.com');
-    setPassword('password123');
   };
 
   return (
@@ -83,10 +78,6 @@ export default function Login({ onLogin }) {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
 
-          <button type="button" onClick={handleDemoLogin} style={styles.demoBtn}>
-            <FiZap style={{ marginRight: 8 }} />
-            Quick Demo Login
-          </button>
         </form>
 
         <p style={styles.footer}>
@@ -181,20 +172,6 @@ const styles = {
     cursor: 'pointer',
     transition: 'background 0.2s',
     marginTop: 4,
-  },
-  demoBtn: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '12px 20px',
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#0070F2',
-    background: 'transparent',
-    border: '2px solid #0070F2',
-    borderRadius: 8,
-    cursor: 'pointer',
-    transition: 'all 0.2s',
   },
   footer: {
     marginTop: 32,

@@ -1,132 +1,63 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║                                                   ║${NC}"
-echo -e "${BLUE}║      ${CYAN}SAP CRM${BLUE} - Customer Relationship Management  ║${NC}"
-echo -e "${BLUE}║              Enterprise Platform                  ║${NC}"
-echo -e "${BLUE}║                                                   ║${NC}"
-echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
-echo ""
-
-# Navigate to project root
 cd "$(dirname "$0")"
-PROJECT_ROOT=$(pwd)
 
-# Load env
-if [ -f .env ]; then
-  set -a
-  source .env
-  set +a
-  echo -e "${GREEN}✓${NC} Environment loaded from .env"
-else
-  echo -e "${RED}✗ .env file not found!${NC}"
+if [[ "${NODE_ENV:-production}" == "test" ]]; then
+  CORS_ORIGINS="${CORS_ORIGINS:-http://127.0.0.1:${FRONTEND_PORT:-3001}}"
+  export CORS_ORIGINS
+fi
+
+for name in DATABASE_URL JWT_SECRET CORS_ORIGINS; do
+  if [[ -z "${!name:-}" ]]; then
+    echo "Required environment variable $name is missing." >&2
+    exit 1
+  fi
+done
+if [[ ${#JWT_SECRET} -lt 32 ]]; then
+  echo "JWT_SECRET must be at least 32 characters." >&2
+  exit 1
+fi
+if [[ ! -d backend/node_modules || ! -d frontend/node_modules || ! -f frontend/dist/index.html ]]; then
+  echo "Installed dependencies and a production frontend build are required." >&2
   exit 1
 fi
 
+APP_HOST=${APP_HOST:-127.0.0.1}
 BACKEND_PORT=${BACKEND_PORT:-4002}
 FRONTEND_PORT=${FRONTEND_PORT:-3001}
 
-# Clean ports
-echo -e "\n${YELLOW}▸ Cleaning ports ${BACKEND_PORT} and ${FRONTEND_PORT}...${NC}"
-kill_port_tree() {
-  local port=$1
-  local pids
-  pids=$(lsof -ti:${port} 2>/dev/null || true)
-  for pid in $pids; do
-    local parent grandparent
-    parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-    grandparent=$(ps -o ppid= -p "$parent" 2>/dev/null | tr -d ' ')
-    kill -9 "$pid" "$parent" "$grandparent" 2>/dev/null || true
-  done
-}
-kill_port_tree "${BACKEND_PORT}"
-kill_port_tree "${FRONTEND_PORT}"
-sleep 1
-echo -e "${GREEN}✓${NC} Ports cleared"
+for port in "$BACKEND_PORT" "$FRONTEND_PORT"; do
+  if [[ ! "$port" =~ ^[0-9]+$ ]] || (( port < 1024 || port > 65535 )); then
+    echo "Application ports must be integers from 1024 through 65535." >&2
+    exit 1
+  fi
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "Port $port is already occupied; no process was changed." >&2
+    exit 1
+  fi
+done
+if [[ "$BACKEND_PORT" == "$FRONTEND_PORT" ]]; then
+  echo "Backend and frontend ports must be different." >&2
+  exit 1
+fi
 
-# Check prerequisites
-echo -e "\n${YELLOW}▸ Checking prerequisites...${NC}"
-command -v node >/dev/null 2>&1 || { echo -e "${RED}✗ Node.js is required${NC}"; exit 1; }
-echo -e "${GREEN}✓${NC} Node.js $(node -v)"
-command -v psql >/dev/null 2>&1 || { echo -e "${RED}✗ PostgreSQL client is required${NC}"; exit 1; }
-echo -e "${GREEN}✓${NC} PostgreSQL client found"
-pg_isready -q 2>/dev/null || { echo -e "${RED}✗ PostgreSQL server is not running${NC}"; exit 1; }
-echo -e "${GREEN}✓${NC} PostgreSQL server is running"
-
-# Create database
-echo -e "\n${YELLOW}▸ Setting up database...${NC}"
-DB_NAME=$(node -e "const url = process.env.DATABASE_URL; if (!url) process.exit(1); console.log(new URL(url).pathname.replace(/^\\//, ''));" 2>/dev/null || echo "sapcrm")
-psql -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = '${DB_NAME}'" 2>/dev/null | grep -q 1 || \
-  psql -U postgres -c "CREATE DATABASE \"${DB_NAME}\"" 2>/dev/null
-echo -e "${GREEN}✓${NC} Database '${DB_NAME}' ready"
-
-# Install backend deps
-echo -e "\n${YELLOW}▸ Installing backend dependencies...${NC}"
-cd "$PROJECT_ROOT/backend"
-npm install --silent 2>&1 | tail -1
-echo -e "${GREEN}✓${NC} Backend dependencies installed"
-
-# Install frontend deps
-echo -e "\n${YELLOW}▸ Installing frontend dependencies...${NC}"
-cd "$PROJECT_ROOT/frontend"
-npm install --silent 2>&1 | tail -1
-echo -e "${GREEN}✓${NC} Frontend dependencies installed"
-
-# Seed database
-echo -e "\n${YELLOW}▸ Seeding database...${NC}"
-cd "$PROJECT_ROOT/backend"
-node seed.js
-echo -e "${GREEN}✓${NC} Database seeded"
-
-# Start backend with hot reload
-echo -e "\n${YELLOW}▸ Starting backend on port ${BACKEND_PORT}...${NC}"
-cd "$PROJECT_ROOT/backend"
-npx nodemon server.js &
+node backend/server.js &
 BACKEND_PID=$!
-echo -e "${GREEN}✓${NC} Backend starting (PID: $BACKEND_PID)"
-
-# Wait for backend
-sleep 2
-
-# Start frontend with HMR
-echo -e "\n${YELLOW}▸ Starting frontend on port ${FRONTEND_PORT}...${NC}"
-cd "$PROJECT_ROOT/frontend"
-BACKEND_URL="http://localhost:${BACKEND_PORT}" npx vite --host 0.0.0.0 --port "${FRONTEND_PORT}" &
+BACKEND_PORT="$BACKEND_PORT" npm --prefix frontend run preview -- --host "$APP_HOST" --port "$FRONTEND_PORT" &
 FRONTEND_PID=$!
-echo -e "${GREEN}✓${NC} Frontend starting (PID: $FRONTEND_PID)"
 
-echo ""
-echo -e "${BLUE}╔═══════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║  ${GREEN}SAP CRM is running!${BLUE}                              ║${NC}"
-echo -e "${BLUE}║                                                   ║${NC}"
-echo -e "${BLUE}║  ${CYAN}Frontend:${NC} http://localhost:${FRONTEND_PORT}               ${BLUE}║${NC}"
-echo -e "${BLUE}║  ${CYAN}Backend:${NC}  http://localhost:${BACKEND_PORT}/api          ${BLUE}║${NC}"
-echo -e "${BLUE}║                                                   ║${NC}"
-echo -e "${BLUE}║  ${YELLOW}Login:${NC}    admin@sapcrm.com / password123       ${BLUE}║${NC}"
-echo -e "${BLUE}║                                                   ║${NC}"
-echo -e "${BLUE}║  ${NC}Press Ctrl+C to stop                             ${BLUE}║${NC}"
-echo -e "${BLUE}╚═══════════════════════════════════════════════════╝${NC}"
-
-# Trap cleanup
 cleanup() {
-  echo -e "\n${YELLOW}Shutting down...${NC}"
-  kill $BACKEND_PID 2>/dev/null || true
-  kill $FRONTEND_PID 2>/dev/null || true
-  lsof -ti:${BACKEND_PORT} 2>/dev/null | xargs kill -9 2>/dev/null || true
-  lsof -ti:${FRONTEND_PORT} 2>/dev/null | xargs kill -9 2>/dev/null || true
-  echo -e "${GREEN}✓${NC} SAP CRM stopped. Goodbye!"
-  exit 0
+  kill "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
+  wait "$BACKEND_PID" "$FRONTEND_PID" 2>/dev/null || true
 }
-trap cleanup SIGINT SIGTERM
+trap cleanup EXIT INT TERM
 
-# Wait
-wait
+for _ in {1..50}; do
+  curl -fsS "http://${APP_HOST}:${BACKEND_PORT}/api/health" >/dev/null && break
+  sleep 0.2
+done
+curl -fsS "http://${APP_HOST}:${BACKEND_PORT}/api/health" >/dev/null
+curl -fsS "http://${APP_HOST}:${FRONTEND_PORT}/login" >/dev/null
+echo "SAP CRM running: frontend http://${APP_HOST}:${FRONTEND_PORT}, API http://${APP_HOST}:${BACKEND_PORT}/api"
+wait "$BACKEND_PID" "$FRONTEND_PID"
