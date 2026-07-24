@@ -845,6 +845,46 @@ async function recordAIResult({ feature, userId, objectType, objectId, input, ou
   }
 }
 
+// Small acceptance boundary: a real protected provider request whose receipt
+// and content are committed before the response is returned.
+app.post('/api/runtime-ai/sap-readiness', async (req, res) => {
+  try {
+    const base = String(process.env.OPENROUTER_BASE_URL || '').replace(/\/$/, '');
+    if (base !== 'https://openrouter.ai/api/v1') return res.status(503).json({ error: 'OpenRouter base URL is not canonical' });
+    const prompt = String(req.body?.prompt || 'Assess the highest-priority control for this SAP CRM runtime before production use.');
+    const started = Date.now();
+    const provider = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'X-Title': 'SAP CRM Runtime Readiness'
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL,
+        max_tokens: 220,
+        messages: [
+          { role: 'system', content: 'You are an SAP operational controls reviewer. Respond concisely with one finding and one next action.' },
+          { role: 'user', content: prompt }
+        ]
+      })
+    });
+    const data = await provider.json();
+    if (!provider.ok || data.error) return res.status(502).json({ error: data.error?.message || `Provider status ${provider.status}` });
+    const content = data.choices?.[0]?.message?.content;
+    if (!data.id || !content) return res.status(502).json({ error: 'Provider response lacked content or receipt' });
+    const providerReceipt = { id: data.id, model: data.model || process.env.OPENROUTER_MODEL, usage: data.usage || null };
+    const saved = await pool.query(
+      `INSERT INTO ai_results (feature, user_id, input, output, model, tokens_used, duration_ms, status)
+       VALUES ('sap-readiness', $1, $2::jsonb, $3::jsonb, $4, $5, $6, 'success') RETURNING id`,
+      [req.user.id, JSON.stringify({ prompt }), JSON.stringify({ content, providerReceipt }), providerReceipt.model, data.usage?.total_tokens || null, Date.now() - started]
+    );
+    return res.json({ content, providerReceipt, recordId: saved.rows[0].id });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
 // AI Sales Forecast
 app.post('/api/ai/sales-forecast', auth, async (req, res) => {
   try {
