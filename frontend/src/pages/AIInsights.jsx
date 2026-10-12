@@ -1,3 +1,6 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples.jsx";
+import FormattedAIReport from "../components/FormattedAIReport.jsx";
 import { useState, useEffect } from 'react';
 import {
   callAI, embedKnowledgeBase, ragSearch, uploadDocument, fetchDocuments,
@@ -21,7 +24,7 @@ import {
 
 // ============ AI RESULT MODAL ============
 function AIResultModal({ title, content, extras, onClose }) {
-  if (!content && !extras) return null;
+  if (content === null && !extras) return null;
   return (
     <div style={modalStyles.overlay} onClick={onClose}>
       <div style={modalStyles.modal} onClick={e => e.stopPropagation()}>
@@ -218,74 +221,7 @@ function CodeBlock({ code, language }) {
 }
 
 function AIOutputDisplay({ content }) {
-  if (!content) return null;
-
-  const text = String(content);
-  const elements = [];
-  let listItems = [];
-
-  const flushList = () => {
-    if (listItems.length > 0) {
-      elements.push(
-        <ul key={`list-${elements.length}`} style={outputStyles.ul}>
-          {listItems.map((li, j) => (
-            <li key={j} style={outputStyles.li}>{renderInline(li)}</li>
-          ))}
-        </ul>
-      );
-      listItems = [];
-    }
-  };
-
-  const renderInline = (text) => {
-    const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={i} style={{ color: '#1D2D3E' }}>{part.slice(2, -2)}</strong>;
-      }
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={i} style={outputStyles.inlineCode}>{part.slice(1, -1)}</code>;
-      }
-      return part;
-    });
-  };
-
-  // Split by code blocks first
-  const segments = text.split(/(```[\s\S]*?```)/g);
-
-  segments.forEach((segment, si) => {
-    if (segment.startsWith('```') && segment.endsWith('```')) {
-      flushList();
-      const inner = segment.slice(3, -3);
-      const nlIndex = inner.indexOf('\n');
-      const lang = nlIndex > 0 ? inner.slice(0, nlIndex).trim() : '';
-      const code = nlIndex > 0 ? inner.slice(nlIndex + 1) : inner;
-      elements.push(<CodeBlock key={`code-${si}`} code={code} language={lang} />);
-    } else {
-      const lines = segment.split('\n');
-      lines.forEach((line, i) => {
-        const trimmed = line.trim();
-        if (!trimmed) { flushList(); return; }
-        if (trimmed.startsWith('## ')) {
-          flushList();
-          elements.push(<h2 key={`${si}-${i}`} style={outputStyles.h2}>{renderInline(trimmed.slice(3))}</h2>);
-        } else if (trimmed.startsWith('### ')) {
-          flushList();
-          elements.push(<h3 key={`${si}-${i}`} style={outputStyles.h3}>{renderInline(trimmed.slice(4))}</h3>);
-        } else if (trimmed.match(/^\d+\.\s/)) {
-          listItems.push(trimmed.replace(/^\d+\.\s/, ''));
-        } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-          listItems.push(trimmed.slice(2));
-        } else {
-          flushList();
-          elements.push(<p key={`${si}-${i}`} style={outputStyles.p}>{renderInline(trimmed)}</p>);
-        }
-      });
-    }
-  });
-  flushList();
-
-  return <div style={outputStyles.container}>{elements}</div>;
+  return <FormattedAIReport response={content} title="AI response" />;
 }
 
 const outputStyles = {
@@ -381,6 +317,9 @@ const outputStyles = {
 };
 
 export default function AIInsights() {
+  const fullAIExamples = useFullAIExamples();
+  const [featureContexts, setFeatureContexts] = useState({});
+
   const [activeFeature, setActiveFeature] = useState(null);
   const [loadingKey, setLoadingKey] = useState(null);
 
@@ -572,7 +511,7 @@ export default function AIInsights() {
           ))}
         </div>
       ) : null;
-      openModal('Customer 360 — ' + c360Account, res?.result || 'No data found.', extras);
+      openModal('Customer 360 — ' + c360Account, res?.result ?? 'No data found.', extras);
     } catch (e) {
       openModal('Customer 360', 'Failed to generate customer 360 view.');
     }
@@ -626,7 +565,7 @@ export default function AIInsights() {
           ))}
         </div>
       ) : null;
-      openModal('Workflow Automation Suggestions', res?.result || 'No suggestions.', extras);
+      openModal('Workflow Automation Suggestions', res?.result ?? 'No suggestions.', extras);
     } catch (e) {
       openModal('Workflow Suggestions', 'Failed to generate workflow suggestions.');
     }
@@ -638,7 +577,7 @@ export default function AIInsights() {
     setAnomalyLoading(true);
     try {
       const res = await explainAnomalies(anomalies);
-      openModal('AI Anomaly Explanations', res?.result || 'No explanation generated.');
+      openModal('AI Anomaly Explanations', res?.result ?? 'No explanation generated.');
     } catch (e) {
       openModal('AI Anomaly Explanations', 'Failed to explain anomalies.');
     }
@@ -655,7 +594,7 @@ export default function AIInsights() {
     setCragLoading(true);
     try {
       const res = await conversationalRag(q, newHistory);
-      setCragHistory(prev => [...prev, { role: 'ai', content: res?.result || 'No answer found.' }]);
+      setCragHistory(prev => [...prev, { role: 'ai', content: res?.result ?? 'No answer found.' }]);
       setCragSources(res?.sources || []);
     } catch (e) {
       setCragHistory(prev => [...prev, { role: 'ai', content: 'Failed to get answer.' }]);
@@ -694,7 +633,7 @@ export default function AIInsights() {
     setPiLoading(true);
     try {
       const res = await getPredictiveInventory();
-      openModal('Predictive Inventory', res?.result || 'No forecast generated.');
+      openModal('Predictive Inventory', res?.result ?? 'No forecast generated.');
     } catch (e) { openModal('Predictive Inventory', 'Failed to generate forecast.'); }
     setPiLoading(false);
   };
@@ -703,7 +642,7 @@ export default function AIInsights() {
     setCcLoading(true);
     try {
       const res = await getContractAnalysis(ccForm);
-      openModal('Contract Clause Analysis', res?.result || 'No analysis generated.');
+      openModal('Contract Clause Analysis', res?.result ?? 'No analysis generated.');
     } catch (e) { openModal('Contract Clause Analysis', 'Failed to analyze contract.'); }
     setCcLoading(false);
   };
@@ -713,7 +652,7 @@ export default function AIInsights() {
     setImLoading(true);
     try {
       const res = await getIntelligentMatching(imForm.documentType, imForm.documentId);
-      openModal('Intelligent Matching', res?.result || 'No matches found.');
+      openModal('Intelligent Matching', res?.result ?? 'No matches found.');
     } catch (e) { openModal('Intelligent Matching', 'Failed to match documents.'); }
     setImLoading(false);
   };
@@ -741,7 +680,7 @@ export default function AIInsights() {
           {data.length > 20 && <p style={{ fontSize: 12, color: '#6A767D', marginTop: 6 }}>Showing 20 of {data.length} rows</p>}
         </div>
       ) : null;
-      openModal('Natural Language Report', res?.result || 'No report generated.', extras);
+      openModal('Natural Language Report', res?.result ?? 'No report generated.', extras);
     } catch (e) { openModal('Natural Language Report', 'Failed to generate report.'); }
     setNlLoading(false);
   };
@@ -763,7 +702,7 @@ export default function AIInsights() {
           ))}
         </div>
       ) : null;
-      openModal('AI Data Quality Scan', res?.result || 'No quality issues found.', extras);
+      openModal('AI Data Quality Scan', res?.result ?? 'No quality issues found.', extras);
     } catch (e) { openModal('AI Data Quality Scan', 'Failed to analyze data quality.'); }
     setDqLoading(false);
   };
@@ -820,7 +759,7 @@ export default function AIInsights() {
           ))}
         </div>
       ) : null;
-      openModal('Multi-doc RAG Q&A', res?.result || 'No answer found.', extras);
+      openModal('Multi-doc RAG Q&A', res?.result ?? 'No answer found.', extras);
     } catch (e) { openModal('Multi-doc RAG Q&A', 'Failed to query documents.'); }
     setMdLoading(false);
   };
@@ -830,7 +769,7 @@ export default function AIInsights() {
     setCiLoading(true);
     try {
       const res = await getChangeImpact(ciForm);
-      openModal('AI Change Impact Analysis', res?.result || 'No impact analysis generated.');
+      openModal('AI Change Impact Analysis', res?.result ?? 'No impact analysis generated.');
     } catch (e) { openModal('AI Change Impact Analysis', 'Failed to analyze impact.'); }
     setCiLoading(false);
   };
@@ -874,7 +813,7 @@ export default function AIInsights() {
     setPoLoading(true);
     try {
       const res = await getPricingOptimizer(poForm.productName, poForm.accountName);
-      openModal('AI Pricing Optimizer', res?.result || 'No pricing suggestions.');
+      openModal('AI Pricing Optimizer', res?.result ?? 'No pricing suggestions.');
     } catch (e) { openModal('AI Pricing Optimizer', 'Failed to generate pricing suggestions.'); }
     setPoLoading(false);
   };
@@ -883,7 +822,7 @@ export default function AIInsights() {
     setBdLoading(true);
     try {
       const res = await getBatchDemandForecast();
-      openModal('Batch Demand Forecasting', res?.result || 'No forecast generated.');
+      openModal('Batch Demand Forecasting', res?.result ?? 'No forecast generated.');
     } catch (e) { openModal('Batch Demand Forecasting', 'Failed to generate batch forecast.'); }
     setBdLoading(false);
   };
@@ -893,7 +832,7 @@ export default function AIInsights() {
     setTlLoading(true);
     try {
       const res = await translateAI(tlText, tlLang);
-      openModal('Translation — ' + tlLang, res?.result || 'Translation failed.');
+      openModal('Translation — ' + tlLang, res?.result ?? 'Translation failed.');
     } catch (e) { openModal('Translation', 'Translation failed.'); }
     setTlLoading(false);
   };
@@ -918,17 +857,18 @@ export default function AIInsights() {
           ))}
         </div>
       ) : null;
-      openModal('RAG with Citations', res?.result || 'No answer found.', extras);
+      openModal('RAG with Citations', res?.result ?? 'No answer found.', extras);
     } catch (e) { openModal('RAG with Citations', 'Failed to get cited answer.'); }
     setRcLoading(false);
   };
 
-  const handleGenerate = async (feature, context) => {
+  const handleGenerate = async (feature) => {
     setActiveFeature(feature.key);
     setLoadingKey(feature.key);
     try {
+      const context = featureContexts[feature.key];
       const res = await callAI(feature.key, context ? { context } : undefined);
-      const content = res?.result || res?.data || res?.message || JSON.stringify(res);
+      const content = res?.result ?? res?.data ?? res?.message ?? res;
       openModal(feature.title, content);
     } catch (err) {
       openModal(feature.title, 'Failed to generate AI insights. Please try again.');
@@ -941,7 +881,7 @@ export default function AIInsights() {
     setLoadingKey('content-generate');
     try {
       const res = await callAI('content-generate', contentForm);
-      const content = res?.result || res?.data || res?.message || JSON.stringify(res);
+      const content = res?.result ?? res?.data ?? res?.message ?? res;
       openModal('Content Generator — ' + contentForm.contentType, content);
     } catch (err) {
       openModal('Content Generator', 'Failed to generate content. Please try again.');
@@ -954,7 +894,7 @@ export default function AIInsights() {
     setLoadingKey('code-generate');
     try {
       const res = await callAI('code-generate', codeForm);
-      const content = res?.result || res?.data || res?.message || JSON.stringify(res);
+      const content = res?.result ?? res?.data ?? res?.message ?? res;
       openModal('SAP Build Code — ' + codeForm.language, content);
     } catch (err) {
       openModal('SAP Build Code', 'Failed to generate code. Please try again.');
@@ -972,7 +912,7 @@ export default function AIInsights() {
     setLoadingKey('copilot');
     try {
       const res = await callAI('copilot', { message: question, history: newHistory });
-      const answer = res?.result || res?.data || res?.message || JSON.stringify(res);
+      const answer = res?.result ?? res?.data ?? res?.message ?? res;
       setChatHistory((prev) => [...prev, { role: 'ai', content: answer }]);
     } catch (err) {
       setChatHistory((prev) => [...prev, { role: 'ai', content: 'Sorry, I could not process your request. Please try again.' }]);
@@ -989,7 +929,7 @@ export default function AIInsights() {
   ];
 
   return (
-    <div style={styles.page}>
+    <div style={styles.page} data-full-ai-workspace="AIInsights"><FullAIExamples controller={fullAIExamples} />
       {/* Header */}
       <div style={styles.header}>
         <div style={styles.headerIcon}>
@@ -1018,7 +958,8 @@ export default function AIInsights() {
                 <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:14 }}>
                   {feature.samples.map((s) => (
                     <button key={s.label}
-                      onClick={() => handleGenerate(feature, s.context)}
+                      type="button"
+                      onClick={() => setFeatureContexts(previous => ({ ...previous, [feature.key]: s.context }))}
                       style={{ padding:'5px 12px', fontSize:11, fontWeight:500, color: feature.color,
                         background:'#fff', border:`1px solid ${feature.color}30`, borderRadius:14, cursor:'pointer' }}>
                       {s.label}
@@ -1026,6 +967,7 @@ export default function AIInsights() {
                   ))}
                 </div>
               )}
+              {feature.samples && <input type="text" aria-label={`${feature.title} context`} value={featureContexts[feature.key] || ''} onChange={event => setFeatureContexts(previous => ({ ...previous, [feature.key]: event.target.value }))} placeholder="Optional analysis context" style={{ ...styles.formInput, marginBottom: 10 }} data-full-ai-field={fullAIExamples.bind({ current: featureContexts[feature.key] || '', change: event => setFeatureContexts(previous => ({ ...previous, [feature.key]: event.target.value })), label: `${feature.title} context` }, `feature-${feature.key}`)} />}
               <button
                 onClick={() => handleGenerate(feature)}
                 disabled={isLoading}
@@ -1063,7 +1005,7 @@ export default function AIInsights() {
               <select
                 value={contentForm.contentType}
                 onChange={(e) => setContentForm({ ...contentForm, contentType: e.target.value })}
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: contentForm.contentType, change: (e) => setContentForm({ ...contentForm, contentType: e.target.value }), label: "contentForm.contentType", manual: false, json: false, sample: 'Email' }, "p1-41622", undefined)}
               >
                 <option value="Email">Email</option>
                 <option value="Proposal">Proposal</option>
@@ -1079,7 +1021,7 @@ export default function AIInsights() {
               <select
                 value={contentForm.tone}
                 onChange={(e) => setContentForm({ ...contentForm, tone: e.target.value })}
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: contentForm.tone, change: (e) => setContentForm({ ...contentForm, tone: e.target.value }), label: "contentForm.tone", manual: false, json: false, sample: 'Professional' }, "p1-42435", undefined)}
               >
                 <option value="Professional">Professional</option>
                 <option value="Formal">Formal</option>
@@ -1096,7 +1038,7 @@ export default function AIInsights() {
                 value={contentForm.topic}
                 onChange={(e) => setContentForm({ ...contentForm, topic: e.target.value })}
                 placeholder="e.g., Q4 sales results, product launch..."
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: contentForm.topic, change: (e) => setContentForm({ ...contentForm, topic: e.target.value }), label: "contentForm.topic", manual: false, json: false, sample: '' }, "p1-43146", undefined)}
               />
             </div>
             <div style={styles.formField}>
@@ -1106,7 +1048,7 @@ export default function AIInsights() {
                 value={contentForm.audience}
                 onChange={(e) => setContentForm({ ...contentForm, audience: e.target.value })}
                 placeholder="e.g., C-level executives, customers..."
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: contentForm.audience, change: (e) => setContentForm({ ...contentForm, audience: e.target.value }), label: "contentForm.audience", manual: false, json: false, sample: '' }, "p1-43591", undefined)}
               />
             </div>
           </div>
@@ -1159,7 +1101,7 @@ export default function AIInsights() {
               <select
                 value={codeForm.language}
                 onChange={(e) => setCodeForm({ ...codeForm, language: e.target.value })}
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: codeForm.language, change: (e) => setCodeForm({ ...codeForm, language: e.target.value }), label: "codeForm.language", manual: false, json: false, sample: 'ABAP' }, "p1-46565", undefined)}
               >
                 <option value="ABAP">ABAP</option>
                 <option value="ABAP RAP">ABAP RAP (RESTful Application Programming)</option>
@@ -1180,7 +1122,7 @@ export default function AIInsights() {
               <select
                 value={codeForm.context}
                 onChange={(e) => setCodeForm({ ...codeForm, context: e.target.value })}
-                style={styles.formInput}
+                style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: codeForm.context, change: (e) => setCodeForm({ ...codeForm, context: e.target.value }), label: "codeForm.context", manual: false, json: false, sample: 'SAP S/4HANA' }, "p1-47798", undefined)}
               >
                 <option value="SAP S/4HANA">SAP S/4HANA</option>
                 <option value="SAP BTP">SAP BTP</option>
@@ -1202,7 +1144,7 @@ export default function AIInsights() {
               onChange={(e) => setCodeForm({ ...codeForm, description: e.target.value })}
               placeholder="e.g., Create a CDS view for sales order items with currency conversion, or Build a Fiori Elements list report for purchase orders with filters..."
               style={{ ...styles.formInput, minHeight: 80, resize: 'vertical', fontFamily: 'inherit' }}
-              rows={3}
+              rows={3} data-full-ai-field={fullAIExamples.bind({ current: codeForm.description, change: (e) => setCodeForm({ ...codeForm, description: e.target.value }), label: "codeForm.description", manual: false, json: false, sample: '' }, "p1-48925", undefined)}
             />
           </div>
           {/* Quick templates */}
@@ -1263,7 +1205,7 @@ export default function AIInsights() {
           <input type="text" value={ragQuery} onChange={e => setRagQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRagSearch(); }}
             placeholder="Semantic search across knowledge base..."
-            style={{ ...styles.formInput, flex: 1 }} />
+            style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: ragQuery, change: e => setRagQuery(e.target.value), label: "ragQuery", manual: false, json: false, sample: '' }, "p1-53188", undefined)} />
           <button onClick={handleRagSearch} disabled={ragSearching || !ragQuery.trim()}
             style={{ ...styles.featureBtn, background: '#006400', padding: '10px 20px' }}>
             {ragSearching ? <div style={styles.btnSpinner} /> : <FiSearch size={16} />}
@@ -1314,11 +1256,11 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Document Title</label>
-            <input type="text" value={docTitle} onChange={e => setDocTitle(e.target.value)} placeholder="Enter title..." style={styles.formInput} />
+            <input type="text" value={docTitle} onChange={e => setDocTitle(e.target.value)} placeholder="Enter title..." style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: docTitle, change: e => setDocTitle(e.target.value), label: "docTitle", manual: false, json: false, sample: '' }, "p1-56215", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Category</label>
-            <select value={docCategory} onChange={e => setDocCategory(e.target.value)} style={styles.formInput}>
+            <select value={docCategory} onChange={e => setDocCategory(e.target.value)} style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: docCategory, change: e => setDocCategory(e.target.value), label: "docCategory", manual: false, json: false, sample: 'General' }, "p1-56483", undefined)}>
               <option>General</option>
               <option>Policy</option>
               <option>Technical</option>
@@ -1374,7 +1316,7 @@ export default function AIInsights() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
           <input type="text" value={c360Account} onChange={e => setC360Account(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleCustomer360(); }}
-            placeholder="Enter account name (e.g., BASF, Siemens)..." style={{ ...styles.formInput, flex: 1 }} />
+            placeholder="Enter account name (e.g., BASF, Siemens)..." style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: c360Account, change: e => setC360Account(e.target.value), label: "c360Account", manual: false, json: false, sample: '' }, "p1-59639", undefined)} />
           <button onClick={handleCustomer360} disabled={c360Loading || !c360Account.trim()}
             style={{ ...styles.featureBtn, background: '#008080' }}>
             {c360Loading ? <><div style={styles.btnSpinner} /> Analyzing...</> : <><FiUser size={16} /> Generate 360</>}
@@ -1404,7 +1346,7 @@ export default function AIInsights() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
           <input type="text" value={recAccount} onChange={e => setRecAccount(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRecommendations(); }}
-            placeholder="Enter account name..." style={{ ...styles.formInput, flex: 1 }} />
+            placeholder="Enter account name..." style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: recAccount, change: e => setRecAccount(e.target.value), label: "recAccount", manual: false, json: false, sample: '' }, "p1-61374", undefined)} />
           <button onClick={handleRecommendations} disabled={recLoading || !recAccount.trim()}
             style={{ ...styles.featureBtn, background: '#E76500' }}>
             {recLoading ? <><div style={styles.btnSpinner} /> Generating...</> : <><FiPackage size={16} /> Get Recommendations</>}
@@ -1518,7 +1460,7 @@ export default function AIInsights() {
         <div style={styles.chatInputRow}>
           <input type="text" value={cragInput} onChange={e => setCragInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleCragSend(); }}
-            placeholder="Ask a question grounded in your documents..." style={styles.chatInput} />
+            placeholder="Ask a question grounded in your documents..." style={styles.chatInput} data-full-ai-field={fullAIExamples.bind({ current: cragInput, change: e => setCragInput(e.target.value), label: "cragInput", manual: false, json: false, sample: '' }, "p1-67889", undefined)} />
           <button onClick={handleCragSend} disabled={!cragInput.trim() || cragLoading}
             style={{ ...styles.chatSendBtn, background: '#1B5E20' }}><FiSend size={18} /></button>
         </div>
@@ -1538,7 +1480,7 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Module</label>
-            <select value={arForm.module} onChange={e => setArForm({ ...arForm, module: e.target.value })} style={styles.formInput}>
+            <select value={arForm.module} onChange={e => setArForm({ ...arForm, module: e.target.value })} style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: arForm.module, change: e => setArForm({ ...arForm, module: e.target.value }), label: "arForm.module", manual: false, json: false, sample: 'orders' }, "p1-69142", undefined)}>
               <option value="orders">Orders</option><option value="purchase_orders">Purchase Orders</option>
               <option value="contracts">Contracts</option><option value="invoices">Invoices</option>
               <option value="projects">Projects</option><option value="expense_reports">Expense Reports</option>
@@ -1546,15 +1488,15 @@ export default function AIInsights() {
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Amount</label>
-            <input type="text" value={arForm.amount} onChange={e => setArForm({ ...arForm, amount: e.target.value })} placeholder="e.g., 50000" style={styles.formInput} />
+            <input type="text" value={arForm.amount} onChange={e => setArForm({ ...arForm, amount: e.target.value })} placeholder="e.g., 50000" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: arForm.amount, change: e => setArForm({ ...arForm, amount: e.target.value }), label: "arForm.amount", manual: false, json: false, sample: '' }, "p1-69737", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Department</label>
-            <input type="text" value={arForm.department} onChange={e => setArForm({ ...arForm, department: e.target.value })} placeholder="e.g., Sales" style={styles.formInput} />
+            <input type="text" value={arForm.department} onChange={e => setArForm({ ...arForm, department: e.target.value })} placeholder="e.g., Sales" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: arForm.department, change: e => setArForm({ ...arForm, department: e.target.value }), label: "arForm.department", manual: false, json: false, sample: '' }, "p1-70030", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Record Type</label>
-            <input type="text" value={arForm.recordType} onChange={e => setArForm({ ...arForm, recordType: e.target.value })} placeholder="e.g., Capital Expense" style={styles.formInput} />
+            <input type="text" value={arForm.recordType} onChange={e => setArForm({ ...arForm, recordType: e.target.value })} placeholder="e.g., Capital Expense" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: arForm.recordType, change: e => setArForm({ ...arForm, recordType: e.target.value }), label: "arForm.recordType", manual: false, json: false, sample: '' }, "p1-70332", undefined)} />
           </div>
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
@@ -1604,11 +1546,11 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Contract ID (optional)</label>
-            <input type="text" value={ccForm.contractId} onChange={e => setCcForm({ ...ccForm, contractId: e.target.value })} placeholder="e.g., 1" style={styles.formInput} />
+            <input type="text" value={ccForm.contractId} onChange={e => setCcForm({ ...ccForm, contractId: e.target.value })} placeholder="e.g., 1" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: ccForm.contractId, change: e => setCcForm({ ...ccForm, contractId: e.target.value }), label: "ccForm.contractId", manual: false, json: false, sample: '' }, "p1-73324", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Or paste contract text</label>
-            <textarea value={ccForm.contractText} onChange={e => setCcForm({ ...ccForm, contractText: e.target.value })} placeholder="Paste contract clauses here..." style={{ ...styles.formInput, minHeight: 60, fontFamily: 'inherit' }} />
+            <textarea value={ccForm.contractText} onChange={e => setCcForm({ ...ccForm, contractText: e.target.value })} placeholder="Paste contract clauses here..." style={{ ...styles.formInput, minHeight: 60, fontFamily: 'inherit' }} data-full-ai-field={fullAIExamples.bind({ current: ccForm.contractText, change: e => setCcForm({ ...ccForm, contractText: e.target.value }), label: "ccForm.contractText", manual: false, json: false, sample: '' }, "p1-73633", undefined)} />
           </div>
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
@@ -1642,7 +1584,7 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Document Type</label>
-            <select value={imForm.documentType} onChange={e => setImForm({ ...imForm, documentType: e.target.value })} style={styles.formInput}>
+            <select value={imForm.documentType} onChange={e => setImForm({ ...imForm, documentType: e.target.value })} style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: imForm.documentType, change: e => setImForm({ ...imForm, documentType: e.target.value }), label: "imForm.documentType", manual: false, json: false, sample: 'purchase_orders' }, "p1-76929", undefined)}>
               <option value="purchase_orders">Purchase Order</option>
               <option value="invoices">Invoice</option>
               <option value="goods_receipts">Goods Receipt</option>
@@ -1650,7 +1592,7 @@ export default function AIInsights() {
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Document ID</label>
-            <input type="text" value={imForm.documentId} onChange={e => setImForm({ ...imForm, documentId: e.target.value })} placeholder="e.g., 1" style={styles.formInput} />
+            <input type="text" value={imForm.documentId} onChange={e => setImForm({ ...imForm, documentId: e.target.value })} placeholder="e.g., 1" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: imForm.documentId, change: e => setImForm({ ...imForm, documentId: e.target.value }), label: "imForm.documentId", manual: false, json: false, sample: '' }, "p1-77412", undefined)} />
           </div>
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
@@ -1684,7 +1626,7 @@ export default function AIInsights() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
           <input type="text" value={nlQuery} onChange={e => setNlQuery(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleNlReporting(); }}
-            placeholder='e.g., "Show me top 10 accounts by revenue" or "Count tickets by status"' style={{ ...styles.formInput, flex: 1 }} />
+            placeholder='e.g., "Show me top 10 accounts by revenue" or "Count tickets by status"' style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: nlQuery, change: e => setNlQuery(e.target.value), label: "nlQuery", manual: false, json: false, sample: '' }, "p1-79281", undefined)} />
           <button onClick={handleNlReporting} disabled={nlLoading || !nlQuery.trim()} style={{ ...styles.featureBtn, background: '#F57F17' }}>
             {nlLoading ? <><div style={styles.btnSpinner} /> Querying...</> : <><FiPieChart size={16} /> Run Report</>}
           </button>
@@ -1750,7 +1692,7 @@ export default function AIInsights() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
           <input type="text" value={mdQuestion} onChange={e => setMdQuestion(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleMultiDocQA(); }}
-            placeholder="Ask a question across all your uploaded documents..." style={{ ...styles.formInput, flex: 1 }} />
+            placeholder="Ask a question across all your uploaded documents..." style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: mdQuestion, change: e => setMdQuestion(e.target.value), label: "mdQuestion", manual: false, json: false, sample: '' }, "p1-82788", undefined)} />
           <button onClick={handleMultiDocQA} disabled={mdLoading || !mdQuestion.trim()} style={{ ...styles.featureBtn, background: '#283593' }}>
             {mdLoading ? <><div style={styles.btnSpinner} /> Searching...</> : <><FiSearch size={16} /> Ask Documents</>}
           </button>
@@ -1783,7 +1725,7 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Change Type</label>
-            <select value={ciForm.changeType} onChange={e => setCiForm({ ...ciForm, changeType: e.target.value })} style={styles.formInput}>
+            <select value={ciForm.changeType} onChange={e => setCiForm({ ...ciForm, changeType: e.target.value })} style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: ciForm.changeType, change: e => setCiForm({ ...ciForm, changeType: e.target.value }), label: "ciForm.changeType", manual: false, json: false, sample: 'Data Migration' }, "p1-84771", undefined)}>
               <option value="Data Migration">Data Migration</option><option value="Org Restructure">Org Restructure</option>
               <option value="Module Config">Module Configuration</option><option value="User Role Change">User/Role Change</option>
               <option value="Field Removal">Field Removal</option><option value="Workflow Change">Workflow Change</option>
@@ -1791,13 +1733,13 @@ export default function AIInsights() {
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Affected Module</label>
-            <input type="text" value={ciForm.module} onChange={e => setCiForm({ ...ciForm, module: e.target.value })} placeholder="e.g., accounts" style={styles.formInput} />
+            <input type="text" value={ciForm.module} onChange={e => setCiForm({ ...ciForm, module: e.target.value })} placeholder="e.g., accounts" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: ciForm.module, change: e => setCiForm({ ...ciForm, module: e.target.value }), label: "ciForm.module", manual: false, json: false, sample: '' }, "p1-85440", undefined)} />
           </div>
         </div>
         <div style={{ ...styles.formField, marginBottom: 12 }}>
           <label style={styles.formLabel}>Describe the change</label>
           <textarea value={ciForm.description} onChange={e => setCiForm({ ...ciForm, description: e.target.value })}
-            placeholder="e.g., Merging two sales territories and reassigning all opportunities..." style={{ ...styles.formInput, minHeight: 60, fontFamily: 'inherit' }} />
+            placeholder="e.g., Merging two sales territories and reassigning all opportunities..." style={{ ...styles.formInput, minHeight: 60, fontFamily: 'inherit' }} data-full-ai-field={fullAIExamples.bind({ current: ciForm.description, change: e => setCiForm({ ...ciForm, description: e.target.value }), label: "ciForm.description", manual: false, json: false, sample: '' }, "p1-85779", undefined)} />
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
           {[
@@ -1831,7 +1773,7 @@ export default function AIInsights() {
           <label style={styles.formLabel}>Paste email content</label>
           <textarea value={etEmail} onChange={e => setEtEmail(e.target.value)}
             placeholder={'From: john@acme.com\nSubject: Urgent: Server down\n\nHi, our production server has been down since 2pm...'}
-            style={{ ...styles.formInput, minHeight: 100, fontFamily: 'inherit' }} />
+            style={{ ...styles.formInput, minHeight: 100, fontFamily: 'inherit' }} data-full-ai-field={fullAIExamples.bind({ current: etEmail, change: e => setEtEmail(e.target.value), label: "etEmail", manual: false, json: false, sample: '' }, "p1-88176", undefined)} />
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
           {[
@@ -1864,11 +1806,11 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Product (optional)</label>
-            <input type="text" value={poForm.productName} onChange={e => setPoForm({ ...poForm, productName: e.target.value })} placeholder="e.g., Cloud Analytics Suite" style={styles.formInput} />
+            <input type="text" value={poForm.productName} onChange={e => setPoForm({ ...poForm, productName: e.target.value })} placeholder="e.g., Cloud Analytics Suite" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: poForm.productName, change: e => setPoForm({ ...poForm, productName: e.target.value }), label: "poForm.productName", manual: false, json: false, sample: '' }, "p1-91301", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Account (optional)</label>
-            <input type="text" value={poForm.accountName} onChange={e => setPoForm({ ...poForm, accountName: e.target.value })} placeholder="e.g., BASF" style={styles.formInput} />
+            <input type="text" value={poForm.accountName} onChange={e => setPoForm({ ...poForm, accountName: e.target.value })} placeholder="e.g., BASF" style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: poForm.accountName, change: e => setPoForm({ ...poForm, accountName: e.target.value }), label: "poForm.accountName", manual: false, json: false, sample: '' }, "p1-91628", undefined)} />
           </div>
         </div>
         <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:12 }}>
@@ -1918,11 +1860,11 @@ export default function AIInsights() {
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, marginBottom: 12 }}>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Text to translate</label>
-            <textarea value={tlText} onChange={e => setTlText(e.target.value)} placeholder="Paste any AI output or text here..." style={{ ...styles.formInput, minHeight: 80, fontFamily: 'inherit' }} />
+            <textarea value={tlText} onChange={e => setTlText(e.target.value)} placeholder="Paste any AI output or text here..." style={{ ...styles.formInput, minHeight: 80, fontFamily: 'inherit' }} data-full-ai-field={fullAIExamples.bind({ current: tlText, change: e => setTlText(e.target.value), label: "tlText", manual: false, json: false, sample: '' }, "p1-94537", undefined)} />
           </div>
           <div style={styles.formField}>
             <label style={styles.formLabel}>Target Language</label>
-            <select value={tlLang} onChange={e => setTlLang(e.target.value)} style={styles.formInput}>
+            <select value={tlLang} onChange={e => setTlLang(e.target.value)} style={styles.formInput} data-full-ai-field={fullAIExamples.bind({ current: tlLang, change: e => setTlLang(e.target.value), label: "tlLang", manual: false, json: false, sample: 'German' }, "p1-94865", undefined)}>
               <option>German</option><option>French</option><option>Spanish</option><option>Portuguese</option>
               <option>Italian</option><option>Dutch</option><option>Japanese</option><option>Chinese</option>
               <option>Korean</option><option>Arabic</option><option>Turkish</option><option>Hindi</option>
@@ -1961,7 +1903,7 @@ export default function AIInsights() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
           <input type="text" value={rcQuestion} onChange={e => setRcQuestion(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleRagCitations(); }}
-            placeholder="Ask anything — every answer will cite its sources..." style={{ ...styles.formInput, flex: 1 }} />
+            placeholder="Ask anything — every answer will cite its sources..." style={{ ...styles.formInput, flex: 1 }} data-full-ai-field={fullAIExamples.bind({ current: rcQuestion, change: e => setRcQuestion(e.target.value), label: "rcQuestion", manual: false, json: false, sample: '' }, "p1-97632", undefined)} />
           <button onClick={handleRagCitations} disabled={rcLoading || !rcQuestion.trim()} style={{ ...styles.featureBtn, background: '#37474F' }}>
             {rcLoading ? <><div style={styles.btnSpinner} /> Citing...</> : <><FiBookmark size={16} /> Ask with Citations</>}
           </button>
@@ -2036,7 +1978,7 @@ export default function AIInsights() {
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleCopilotSend(); }}
             placeholder="Ask me anything about your business data..."
-            style={styles.chatInput}
+            style={styles.chatInput} data-full-ai-field={fullAIExamples.bind({ current: chatInput, change: (e) => setChatInput(e.target.value), label: "chatInput", manual: false, json: false, sample: '' }, "p1-100628", undefined)}
           />
           <button
             onClick={handleCopilotSend}

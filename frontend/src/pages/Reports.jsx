@@ -22,6 +22,7 @@ const quickReports = [
 export default function Reports() {
   const [selectedModule, setSelectedModule] = useState(moduleList[0]?.key || '');
   const [previewData, setPreviewData] = useState([]);
+  const [previewError, setPreviewError] = useState('');
   const [loading, setLoading] = useState(false);
   const [reportCounts, setReportCounts] = useState({});
   const [moduleCounts, setModuleCounts] = useState({});
@@ -37,10 +38,11 @@ export default function Reports() {
 
   const loadPreview = async (key) => {
     setLoading(true);
+    setPreviewError('');
     try {
       const res = await fetchAll(key);
-      setPreviewData((res.data || []).slice(0, 15));
-    } catch { setPreviewData([]); }
+      setPreviewData((res?.data || []).slice(0, 15));
+    } catch (error) { setPreviewData([]); setPreviewError(error.message || 'Could not load report preview.'); }
     setLoading(false);
   };
 
@@ -146,6 +148,8 @@ export default function Reports() {
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: TEXT_LIGHT }}>Loading preview...</div>
+        ) : previewError ? (
+          <div role="alert" style={{ textAlign: 'center', padding: 40, color: '#B00020' }}>Could not load report preview: {previewError}</div>
         ) : previewData.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: TEXT_LIGHT }}>No records found.</div>
         ) : (

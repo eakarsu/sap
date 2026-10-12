@@ -22,8 +22,15 @@ export async function request(url, options = {}) {
 export const login = (email, password) =>
   request(`${API}/auth/login`, { method: 'POST', body: JSON.stringify({ email, password }) });
 
-export const fetchAll = (module, search = '') =>
-  request(`${API}/${module}?search=${encodeURIComponent(search)}&limit=100&order=desc`);
+export const fetchAll = async (module, search = '') => {
+  const response = await request(`${API}/${module}?search=${encodeURIComponent(search)}&limit=100&order=desc`);
+  if (response === null) return null; // The shared request handler redirects on 401.
+  if (Array.isArray(response)) return { data: response, total: response.length };
+  if (!Array.isArray(response?.data)) {
+    throw new Error(response?.error || `Invalid ${module} list response`);
+  }
+  return response;
+};
 
 export const fetchOne = (module, id) =>
   request(`${API}/${module}/${id}`);

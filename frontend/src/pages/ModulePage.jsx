@@ -38,7 +38,7 @@ function RelationDropdown({ field, value, onChange, inputStyle }) {
     debRef.current = setTimeout(() => {
       setLoading(true);
       fetchAll(field.relation.module, q).then((res) => {
-        const rows = Array.isArray(res) ? res : res?.data || [];
+        const rows = Array.isArray(res?.data) ? res.data : [];
         setOptions(rows.slice(0, 10));
         setShowDrop(true);
         setLoading(false);
@@ -342,6 +342,7 @@ export default function ModulePage() {
   const config = modules[moduleKey];
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({});
@@ -383,10 +384,15 @@ export default function ModulePage() {
 
   const loadData = useCallback((q = '') => {
     setLoading(true);
+    setLoadError('');
     fetchAll(moduleKey, q).then((res) => {
-      setItems(Array.isArray(res) ? res : res?.data || []);
+      setItems(Array.isArray(res?.data) ? res.data : []);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((error) => {
+      setItems([]);
+      setLoadError(error.message || 'Could not load records.');
+      setLoading(false);
+    });
   }, [moduleKey]);
 
   useEffect(() => {
@@ -766,6 +772,8 @@ export default function ModulePage() {
           <div style={styles.loaderWrap}>
             <div style={styles.spinner} />
           </div>
+        ) : loadError ? (
+          <div role="alert" style={styles.emptyState}>Could not load records: {loadError}</div>
         ) : items.length === 0 ? (
           <div style={styles.emptyState}>
             <Icon size={40} style={{ color: '#D1D9E0', marginBottom: 12 }} />

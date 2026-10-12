@@ -1,3 +1,6 @@
+
+import FullAIExamples, { useFullAIExamples } from "../components/FullAIExamples.jsx";
+import FormattedAIReport from "../components/FormattedAIReport";
 import React, { useState, useEffect } from 'react';
 import {
   hybridSearch, recommendApprover, anomalyToTicket, voiceAction,
@@ -77,6 +80,8 @@ export default function AIStudio() {
 // All endpoints return 503 + { missing: <ENV> } when their env var is unset.
 // =====================================================================
 function SapBacklogPanel() {
+  const fullAIExamples = useFullAIExamples();
+
   const [op, setOp] = useState('odata-proxy');
   const [payloadText, setPayloadText] = useState('{}');
   const [loading, setLoading] = useState(false);
@@ -124,28 +129,26 @@ function SapBacklogPanel() {
   };
 
   return (
-    <div style={card}>
+    <div style={card} data-full-ai-workspace="SapBacklogPanel"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
       <p style={{ color: '#6A767D', fontSize: 13, marginTop: 0 }}>
         Apply pass 5 — additive backlog endpoints for SAP connectors / workflow / consolidation / pricing / document-flow / where-used / entity-mapping / AI Studio prompt design. Each NEEDS-CREDS endpoint returns 503 with a `missing` env-var name when not configured.
       </p>
       <div style={{ marginBottom: 12 }}>
-        <select value={op} onChange={(e) => switchOp(e.target.value)} style={{ ...input, maxWidth: 480 }}>
+        <select value={op} onChange={(e) => switchOp(e.target.value)} style={{ ...input, maxWidth: 480 }} data-full-ai-field={fullAIExamples.bind({ current: op, change: (e) => switchOp(e.target.value), label: "op", manual: false, json: false, sample: 'odata-proxy' }, "p1-6163", undefined)}>
           {OPS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
         </select>
       </div>
       <textarea
         style={{ ...input, height: 120, fontFamily: 'monospace' }}
         value={payloadText}
-        onChange={(e) => setPayloadText(e.target.value)}
+        onChange={(e) => setPayloadText(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: payloadText, change: (e) => setPayloadText(e.target.value), label: "payloadText", manual: false, json: false, sample: '{}' }, "p1-6378", undefined)}
       />
       <div style={{ marginTop: 12 }}>
         <button style={btn} onClick={run} disabled={loading}>{loading ? 'Running…' : 'Send'}</button>
       </div>
       {error && <pre style={{ color: '#B00020', whiteSpace: 'pre-wrap', marginTop: 12 }}>{error}</pre>}
       {result && (
-        <pre style={{ background: '#F8F9FA', padding: 12, borderRadius: 6, marginTop: 12, fontSize: 12, overflow: 'auto' }}>
-          {JSON.stringify(result, null, 2)}
-        </pre>
+        <FormattedAIReport response={result} />
       )}
     </div>
   );
@@ -156,6 +159,8 @@ const input = { width: '100%', padding: '8px 10px', border: '1px solid #D5DADF',
 const btn = { padding: '8px 16px', background: '#0070F2', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 13 };
 
 function HybridSearchPanel() {
+  const fullAIExamples = useFullAIExamples();
+
   const [query, setQuery] = useState('');
   const [alpha, setAlpha] = useState(0.6);
   const [loading, setLoading] = useState(false);
@@ -170,14 +175,14 @@ function HybridSearchPanel() {
   };
 
   return (
-    <div style={card}>
+    <div style={card} data-full-ai-workspace="HybridSearchPanel"><FullAIExamples controller={fullAIExamples} disabled={Boolean(loading)} />
       <p style={{ color: '#6A767D', fontSize: 13, marginTop: 0 }}>
         Hybrid retrieval — BM25 full-text + pgvector cosine, blended by alpha.
       </p>
-      <input style={input} placeholder="Search query…" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <input style={input} placeholder="Search query…" value={query} onChange={(e) => setQuery(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: query, change: (e) => setQuery(e.target.value), label: "query", manual: false, json: false, sample: '' }, "p1-7835", undefined)} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '12px 0' }}>
         <label style={{ fontSize: 12, color: '#6A767D' }}>α (vector weight): {alpha.toFixed(2)}</label>
-        <input type="range" min={0} max={1} step={0.05} value={alpha} onChange={(e) => setAlpha(Number(e.target.value))} />
+        <input type="range" min={0} max={1} step={0.05} value={alpha} onChange={(e) => setAlpha(Number(e.target.value))} data-full-ai-field={fullAIExamples.bind({ current: alpha, change: (e) => setAlpha(Number(e.target.value)), label: "alpha", manual: false, json: false, sample: 0.6 }, "p1-8145", undefined)} />
         <button style={btn} onClick={run} disabled={loading || !query}>{loading ? 'Searching…' : 'Search'}</button>
       </div>
       {data?.results && (
@@ -200,6 +205,7 @@ function HybridSearchPanel() {
 }
 
 function ApproverPanel() {
+  const fullAIExamples = useFullAIExamples();
   const [mod, setMod] = useState('purchase_orders');
   const [recordId, setRecordId] = useState('');
   const [amount, setAmount] = useState('');
@@ -213,22 +219,19 @@ function ApproverPanel() {
     setLoading(false);
   };
   return (
-    <div style={card}>
+    <div style={card} data-full-ai-workspace="ApproverPanel">
+      <FullAIExamples controller={fullAIExamples} disabled={loading} />
       <p style={{ color: '#6A767D', fontSize: 13, marginTop: 0 }}>
         Recommend the next approver(s) for a transaction based on history.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-        <input style={input} placeholder="module" value={mod} onChange={(e) => setMod(e.target.value)} />
-        <input style={input} placeholder="record id" value={recordId} onChange={(e) => setRecordId(e.target.value)} />
-        <input style={input} placeholder="amount (optional)" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <input style={input} placeholder="region (optional)" value={region} onChange={(e) => setRegion(e.target.value)} />
+        <input style={input} placeholder="module" value={mod} onChange={(e) => setMod(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: mod, change: e => setMod(e.target.value), label: 'Module', sample: 'purchase_orders' }, 'approver-module')} />
+        <input style={input} placeholder="record id" value={recordId} onChange={(e) => setRecordId(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: recordId, change: e => setRecordId(e.target.value), label: 'Record ID', reference: true }, 'approver-record')} />
+        <input style={input} placeholder="amount (optional)" value={amount} onChange={(e) => setAmount(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: amount, change: e => setAmount(e.target.value), label: 'Amount' }, 'approver-amount')} />
+        <input style={input} placeholder="region (optional)" value={region} onChange={(e) => setRegion(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: region, change: e => setRegion(e.target.value), label: 'Region' }, 'approver-region')} />
       </div>
       <button style={btn} onClick={run} disabled={loading || !recordId}>{loading ? 'Thinking…' : 'Recommend'}</button>
-      {data && (
-        <pre style={{ background: '#FAFBFC', padding: 12, borderRadius: 6, marginTop: 12, fontSize: 12, overflow: 'auto' }}>
-          {JSON.stringify(data, null, 2)}
-        </pre>
-      )}
+      {data && <FormattedAIReport response={data} title="Approver recommendation" />}
     </div>
   );
 }
@@ -257,16 +260,13 @@ function AnomalyPanel() {
       <button style={btn} onClick={create} disabled={loading || anomalies.length === 0}>
         {loading ? 'Creating…' : `Create ${anomalies.length} Tickets`}
       </button>
-      {tickets && (
-        <pre style={{ background: '#FAFBFC', padding: 12, borderRadius: 6, marginTop: 12, fontSize: 12, overflow: 'auto' }}>
-          {JSON.stringify(tickets, null, 2)}
-        </pre>
-      )}
+      {tickets && <FormattedAIReport response={tickets} title="Anomaly tickets" />}
     </div>
   );
 }
 
 function VoicePanel() {
+  const fullAIExamples = useFullAIExamples();
   const [transcript, setTranscript] = useState('');
   const [mod, setMod] = useState('');
   const [loading, setLoading] = useState(false);
@@ -303,7 +303,8 @@ function VoicePanel() {
   };
 
   return (
-    <div style={card}>
+    <div style={card} data-full-ai-workspace="VoicePanel">
+      <FullAIExamples controller={fullAIExamples} disabled={loading} />
       <p style={{ color: '#6A767D', fontSize: 13, marginTop: 0 }}>
         Voice-driven SAP — transcribe a spoken command (browser STT), then translate it to a tool plan over the 77-module CRUD.
       </p>
@@ -311,17 +312,13 @@ function VoicePanel() {
         <button style={{ ...btn, background: recording ? '#dc2626' : '#0070F2' }} onClick={recording ? stopMic : startMic}>
           <FiMic /> {recording ? 'Stop' : 'Record'}
         </button>
-        <input style={input} placeholder="current module (optional)" value={mod} onChange={(e) => setMod(e.target.value)} />
+        <input style={input} placeholder="current module (optional)" value={mod} onChange={(e) => setMod(e.target.value)} data-full-ai-field={fullAIExamples.bind({ current: mod, change: e => setMod(e.target.value), label: 'Current module', sample: 'purchase_orders' }, 'voice-module')} />
       </div>
-      <textarea style={{ ...input, height: 80 }} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Transcript…" />
+      <textarea style={{ ...input, height: 80 }} value={transcript} onChange={(e) => setTranscript(e.target.value)} placeholder="Transcript…" data-full-ai-field={fullAIExamples.bind({ current: transcript, change: e => setTranscript(e.target.value), label: 'Transcript' }, 'voice-transcript')} />
       <div style={{ marginTop: 10 }}>
         <button style={btn} onClick={run} disabled={loading || !transcript}>{loading ? 'Translating…' : 'Translate to Action'}</button>
       </div>
-      {plan && (
-        <pre style={{ background: '#FAFBFC', padding: 12, borderRadius: 6, marginTop: 12, fontSize: 12, overflow: 'auto' }}>
-          {JSON.stringify(plan, null, 2)}
-        </pre>
-      )}
+      {plan && <FormattedAIReport response={plan} title="Voice action plan" />}
     </div>
   );
 }
@@ -381,13 +378,14 @@ function TenantKeysPanel() {
 
 function HistoryPanel() {
   const [items, setItems] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ totalPages: 1 });
   const [feature, setFeature] = useState('');
 
   useEffect(() => {
     aiResults({ page, pageSize: 20, feature: feature || undefined }).then((r) => {
-      setItems(r?.data || []);
+      setItems(Array.isArray(r?.data) ? r.data : []);
       setPagination(r?.pagination || { totalPages: 1 });
     });
   }, [page, feature]);
@@ -410,6 +408,7 @@ function HistoryPanel() {
             <th style={{ textAlign: 'left', padding: 8 }}>Feature</th>
             <th style={{ textAlign: 'left', padding: 8 }}>Status</th>
             <th style={{ textAlign: 'right', padding: 8 }}>Duration (ms)</th>
+            <th style={{ textAlign: 'right', padding: 8 }}>Report</th>
           </tr>
         </thead>
         <tbody>
@@ -419,10 +418,14 @@ function HistoryPanel() {
               <td style={{ padding: 8 }}>{r.feature}</td>
               <td style={{ padding: 8 }}>{r.status}</td>
               <td style={{ padding: 8, textAlign: 'right' }}>{r.duration_ms ?? '—'}</td>
+              <td style={{ padding: 8, textAlign: 'right' }}><button type="button" style={btn} onClick={() => setSelectedId(r.id)} aria-label={`View report for ${r.feature}`}>View report</button></td>
             </tr>
           ))}
         </tbody>
       </table>
+      {items.find((item) => item.id === selectedId) && (
+        <FormattedAIReport response={items.find((item) => item.id === selectedId).output} title="Saved AI report" />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={btn}>Prev</button>
         <span style={{ fontSize: 12 }}>page {page} / {pagination.totalPages}</span>
